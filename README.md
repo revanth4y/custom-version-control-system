@@ -54,7 +54,7 @@ It is built as a backend service and is intended for **learning, interviews, and
 ---
 
 ## 📂 Project Structure (High Level)
-
+```
 +-- controllers
 |   +-- init.js
 |   +-- add.js
@@ -75,7 +75,7 @@ It is built as a backend service and is intended for **learning, interviews, and
 +-- index.js
 +-- README.md
 
-
+```
 
 ## 🔁 Example Workflow
 
