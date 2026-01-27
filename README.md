@@ -54,26 +54,27 @@ It is built as a backend service and is intended for **learning, interviews, and
 ---
 
 ## 📂 Project Structure (High Level)
-.
-├── controllers/
-│   ├── init.js
-│   ├── add.js
-│   ├── commit.js
-│   ├── revert.js
-│   └── history.js
-│
-├── middleware/
-│   ├── authMiddleware.js
-│   └── authorizeMiddleware.js
-│
-├── storage/
-│   ├── commits/
-│   └── index/
-│
-├── routes/
-│
-├── index.js
-└── README.md
+
++-- controllers
+|   +-- init.js
+|   +-- add.js
+|   +-- commit.js
+|   +-- revert.js
+|   +-- history.js
+|
++-- middleware
+|   +-- authMiddleware.js
+|   +-- authorizeMiddleware.js
+|
++-- storage
+|   +-- commits
+|   +-- index
+|
++-- routes
+|
++-- index.js
++-- README.md
+
 
 
 ## 🔁 Example Workflow
