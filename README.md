@@ -70,10 +70,7 @@ It is built as a backend service and is intended for **learning, interviews, and
 ├── routes/
 ├── index.js
 └── README.md
-
-
 ```
-
 ## 🔁 Example Workflow
 
 1. Initialize a repository  
