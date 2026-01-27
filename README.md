@@ -1,112 +1,120 @@
-ustom Version Control System
-Overview
+# Custom Version Control System
 
-This project is a Git-inspired version control backend designed to demonstrate how core version control workflows work internally. It provides a structured alternative to manual file versioning by implementing hash-based change tracking, commit history, and secure repository access using filesystem-based storage.
+A Git-inspired **version control backend** designed to demonstrate how core version control workflows operate internally.  
+This project focuses on **system design, correctness, and backend fundamentals**, rather than re-implementing Git completely.
 
-The system is built as a backend service and focuses on clarity, correctness, and system design fundamentals rather than re-implementing Git completely.
+---
 
-Key Features
+## 📌 Overview
 
-Repository initialization
+This system provides a structured alternative to manual file versioning by implementing:
 
-File staging (indexing)
+- Hash-based change tracking
+- Commit history management
+- Secure repository access
+- Filesystem-based persistence
 
-Commit creation and commit history
+It is built as a backend service and is intended for **learning, interviews, and backend design demonstrations**.
 
-Hash-based version snapshots
+---
 
-Rollback and revert functionality
+## ✨ Key Features
 
-Authentication and role-based authorization
+- Repository initialization
+- File staging (indexing)
+- Commit creation and commit history
+- Hash-based version snapshots
+- Rollback and revert functionality
+- Authentication and role-based authorization
+- RESTful API design for versioning operations
 
-RESTful API design for versioning operations
+---
 
-Tech Stack
+## 🛠️ Tech Stack
 
-Backend: Node.js, Express.js
+- **Backend:** Node.js, Express.js
+- **Language:** JavaScript
+- **Storage:** File system–based persistence
+- **Security:** Authentication & Authorization
+- **Concepts:**  
+  - Hashing (SHA)  
+  - REST APIs  
+  - Version Control Fundamentals  
 
-Language: JavaScript
+---
 
-Storage: File system based persistence
+## 🧠 System Design Highlights
 
-Security: Authentication and Authorization
+- Uses **hash-based identifiers** to track file versions and commits
+- Stores version snapshots using a **structured filesystem layout**
+- Separates concerns using a **controller-based architecture**
+- Secures repository operations with **role-based access control**
+- Designed to support **clear rollback and recovery workflows**
 
-Concepts: Hashing (SHA), REST APIs, Version Control Fundamentals
+---
 
-System Design Highlights
-
-Uses hash-based identifiers to track file versions and commits
-
-Stores version snapshots using a structured filesystem layout
-
-Separates concerns using a controller-based architecture
-
-Secures repository operations with role-based access control
-
-Designed to support clear rollback and recovery workflows
-
-Project Structure (High Level)
+## 📂 Project Structure (High Level)
 ├── controllers/
-│   ├── init.js
-│   ├── add.js
-│   ├── commit.js
-│   ├── revert.js
-│   └── history.js
+│ ├── init.js
+│ ├── add.js
+│ ├── commit.js
+│ ├── revert.js
+│ └── history.js
 ├── middleware/
-│   ├── authMiddleware.js
-│   └── authorizeMiddleware.js
+│ ├── authMiddleware.js
+│ └── authorizeMiddleware.js
 ├── storage/
-│   ├── commits/
-│   └── index/
+│ ├── commits/
+│ └── index/
 ├── routes/
 ├── index.js
 └── README.md
 
-Example Workflow
 
-Initialize a repository
+---
 
-Stage files for tracking
+## 🔁 Example Workflow
 
-Commit changes to generate a version snapshot
+1. Initialize a repository  
+2. Stage files for tracking  
+3. Commit changes to generate a version snapshot  
+4. View commit history  
+5. Revert or rollback to a previous version  
 
-View commit history
+---
 
-Revert or rollback to a previous version
-
-Use Case
+## 🎯 Use Cases
 
 This system is intended for:
 
-Learning how version control systems work internally
+- Learning how version control systems work internally
+- Demonstrating backend and system design skills
+- Practicing REST API design and filesystem-based persistence
+- Interview discussions around Git fundamentals
 
-Demonstrating backend and system design skills
+---
 
-Practicing REST API design and filesystem-based persistence
+## ⚠️ Limitations
 
-Interview discussions around Git fundamentals
+- Not a full replacement for Git
+- No distributed peer-to-peer synchronization
+- Focuses on backend logic rather than UI
 
-Limitations
+These design choices were intentional to keep the system **simple, understandable, and interview-friendly**.
 
-Not a full replacement for Git
+---
 
-No distributed peer-to-peer synchronization
+## 🚀 Future Improvements
 
-Focuses on backend logic rather than UI
+- Branching and merge support
+- Distributed repository synchronization
+- Command-line interface (CLI)
+- Optimized storage using delta compression
 
-These design choices were intentional to keep the system simple, understandable, and interview-friendly.
+---
 
-Future Improvements
+## 👤 Author
 
-Branching and merge support
-
-Distributed repository synchronization
-
-Command-line interface (CLI)
-
-Optimized storage using delta compression
-
-Author
-
-Revanth Y
+**Revanth Y**  
 GitHub: https://github.com/revanth4y
+
