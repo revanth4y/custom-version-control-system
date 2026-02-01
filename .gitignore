@@ -1,0 +1,45 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+!**/.mvn/wrapper/*.jar
+hs_err_pid*
+replay_pid*
+
+# ---- VCS object store (runtime data, created from Phase 2 onward) ----
+storage/
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
