@@ -97,6 +97,7 @@ public final class ObjectFormat {
         return switch (type) {
             case BLOB -> new Blob(payload);
             case TREE -> Tree.parse(payload);
+            case COMMIT -> Commit.parse(payload);
         };
     }
 
