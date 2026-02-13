@@ -1,10 +1,12 @@
 package com.gitforge.vcs.storage;
 
 import com.gitforge.vcs.object.Blob;
+import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.ObjectId;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.VcsObject;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -43,6 +45,9 @@ public interface ObjectStore {
     /** Reads an object that must exist and must be a tree. */
     Tree readTree(ObjectId id);
 
+    /** Reads an object that must exist and must be a commit. */
+    Commit readCommit(ObjectId id);
+
     boolean contains(ObjectId id);
 
     /**
@@ -54,4 +59,18 @@ public interface ObjectStore {
 
     /** The number of distinct objects held. */
     long count();
+
+    /**
+     * The ids of every stored object, derived from where each object is filed
+     * rather than from its contents.
+     *
+     * <p>Reading these back and re-hashing them is what proves the store's
+     * central invariant: an object's location is the SHA-1 of its canonical
+     * representation.
+     *
+     * <p>Returns a materialised list rather than a stream, so callers cannot leak
+     * an open directory handle. Repositories at portfolio scale hold few enough
+     * objects for this to be the right trade.
+     */
+    List<ObjectId> listIds();
 }
