@@ -1,0 +1,256 @@
+package com.gitforge.vcs.ref;
+
+import com.gitforge.vcs.object.ObjectId;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Stream;
+
+/**
+ * References stored as small files, mirroring the on-disk shape of the object
+ * store but for mutable data.
+ *
+ * <pre>
+ *   refs/heads/main          "e3f1a2...\n"
+ *   refs/heads/feature/login "9b2c4d...\n"
+ *   HEAD                     "ref: refs/heads/main\n"  or  "&lt;40 hex&gt;\n"
+ * </pre>
+ *
+ * <p>Every write goes through a temporary file and an atomic move, so an
+ * interrupted update leaves either the previous commit id or the new one — never
+ * an empty or truncated ref. That matters more here than in the object store:
+ * object files are immutable and self-verifying, whereas a corrupted branch file
+ * would silently lose the tip of a line of development.
+ */
+public final class FileSystemRefStore implements RefStore {
+
+    private static final String REFS_DIRECTORY = "refs";
+    private static final String HEADS_DIRECTORY = "heads";
+    private static final String HEAD_FILE = "HEAD";
+    private static final String SYMBOLIC_PREFIX = "ref: ";
+    private static final String HEADS_PREFIX = "refs/heads/";
+    private static final String TEMP_PREFIX = ".tmp-ref-";
+    private static final String DEFAULT_BRANCH = "main";
+
+    private final Path repositoryRoot;
+    private final Path headsRoot;
+
+    public FileSystemRefStore(Path repositoryRoot) {
+        if (repositoryRoot == null) {
+            throw new IllegalArgumentException("Repository root must not be null");
+        }
+        this.repositoryRoot = repositoryRoot.toAbsolutePath().normalize();
+        this.headsRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(HEADS_DIRECTORY);
+        try {
+            Files.createDirectories(headsRoot);
+        } catch (IOException ex) {
+            throw new RefException("Could not create reference store at " + headsRoot, ex);
+        }
+    }
+
+    @Override
+    public void createBranch(String name, ObjectId commit) {
+        requireCommit(commit);
+        if (branchExists(name)) {
+            throw new RefException("Branch already exists: " + name);
+        }
+        writeBranch(name, commit);
+    }
+
+    @Override
+    public Optional<ObjectId> getBranch(String name) {
+        Path file = branchPath(name);
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(readCommitId(file, "branch " + name));
+    }
+
+    @Override
+    public boolean branchExists(String name) {
+        return Files.isRegularFile(branchPath(name));
+    }
+
+    @Override
+    public List<String> listBranches() {
+        if (!Files.isDirectory(headsRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(headsRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
+                    // Nested names are the relative path with forward slashes,
+                    // so feature/login reads the same on every platform.
+                    .map(path -> headsRoot.relativize(path).toString().replace('\\', '/'))
+                    .sorted(Comparator.naturalOrder())
+                    .toList();
+        } catch (IOException ex) {
+            throw new RefException("Could not list branches in " + headsRoot, ex);
+        }
+    }
+
+    @Override
+    public void updateBranch(String name, ObjectId commit) {
+        requireCommit(commit);
+        if (!branchExists(name)) {
+            throw new RefException("Branch does not exist: " + name);
+        }
+        writeBranch(name, commit);
+    }
+
+    @Override
+    public void deleteBranch(String name) {
+        Path file = branchPath(name);
+        if (!Files.isRegularFile(file)) {
+            throw new RefException("Branch does not exist: " + name);
+        }
+        try {
+            Files.delete(file);
+            // Only the now-empty parents of a nested name are removed; the
+            // commit and every object beneath it are untouched.
+            pruneEmptyParents(file.getParent());
+        } catch (IOException ex) {
+            throw new RefException("Could not delete branch " + name, ex);
+        }
+    }
+
+    @Override
+    public Head readHead() {
+        Path head = repositoryRoot.resolve(HEAD_FILE);
+        if (!Files.isRegularFile(head)) {
+            // A repository with no HEAD yet behaves as though it is on the
+            // default branch, which does not exist until the first commit.
+            return Head.onBranch(DEFAULT_BRANCH);
+        }
+
+        String content = readText(head).trim();
+        if (content.isEmpty()) {
+            throw new RefException("HEAD is empty");
+        }
+        if (content.startsWith(SYMBOLIC_PREFIX)) {
+            String target = content.substring(SYMBOLIC_PREFIX.length()).trim();
+            if (!target.startsWith(HEADS_PREFIX)) {
+                throw new RefException("HEAD points outside " + HEADS_PREFIX + ": " + target);
+            }
+            return Head.onBranch(target.substring(HEADS_PREFIX.length()));
+        }
+        try {
+            return Head.detachedAt(ObjectId.fromHex(content));
+        } catch (IllegalArgumentException ex) {
+            throw new RefException("HEAD does not contain a valid commit id: " + content, ex);
+        }
+    }
+
+    @Override
+    public void setHead(Head head) {
+        if (head == null) {
+            throw new RefException("HEAD must not be null");
+        }
+        String content = switch (head) {
+            case Head.OnBranch onBranch -> SYMBOLIC_PREFIX + HEADS_PREFIX + onBranch.branch() + "\n";
+            case Head.Detached detached -> detached.commit().toHex() + "\n";
+        };
+        writeAtomically(repositoryRoot.resolve(HEAD_FILE), content);
+    }
+
+    @Override
+    public Optional<ObjectId> resolveHead() {
+        return switch (readHead()) {
+            case Head.OnBranch onBranch -> getBranch(onBranch.branch());
+            case Head.Detached detached -> Optional.of(detached.commit());
+        };
+    }
+
+    /**
+     * The file backing a branch, after confirming the resolved path is still
+     * inside {@code refs/heads}.
+     *
+     * <p>{@link BranchName} should already have rejected anything dangerous; this
+     * check is independent of it, so a naming rule that turns out to be
+     * incomplete cannot become a write outside the refs directory.
+     */
+    private Path branchPath(String name) {
+        BranchName.validate(name);
+
+        Path resolved = headsRoot.resolve(name).normalize();
+        if (!resolved.startsWith(headsRoot)) {
+            throw new RefException("Branch name escapes the reference directory: " + name);
+        }
+        return resolved;
+    }
+
+    private void writeBranch(String name, ObjectId commit) {
+        Path file = branchPath(name);
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException ex) {
+            throw new RefException("Could not create directory for branch " + name, ex);
+        }
+        writeAtomically(file, commit.toHex() + "\n");
+    }
+
+    private ObjectId readCommitId(Path file, String description) {
+        String content = readText(file).trim();
+        try {
+            return ObjectId.fromHex(content);
+        } catch (IllegalArgumentException ex) {
+            throw new RefException(description + " does not contain a valid commit id: " + content, ex);
+        }
+    }
+
+    private static String readText(Path file) {
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new RefException("Could not read " + file, ex);
+        }
+    }
+
+    private static void writeAtomically(Path target, String content) {
+        try {
+            Files.createDirectories(target.getParent());
+            Path temp = Files.createTempFile(target.getParent(), TEMP_PREFIX, null);
+            try {
+                Files.writeString(temp, content, StandardCharsets.UTF_8);
+                try {
+                    Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException ex) {
+                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temp);
+            }
+        } catch (IOException ex) {
+            throw new RefException("Could not write " + target, ex);
+        }
+    }
+
+    /** Removes directories left empty by a deletion, stopping at {@code refs/heads}. */
+    private void pruneEmptyParents(Path directory) throws IOException {
+        Path current = directory;
+        while (current != null && !current.equals(headsRoot) && current.startsWith(headsRoot)) {
+            try (Stream<Path> entries = Files.list(current)) {
+                if (entries.findAny().isPresent()) {
+                    return;
+                }
+            }
+            Path parent = current.getParent();
+            Files.delete(current);
+            current = parent;
+        }
+    }
+
+    private static void requireCommit(ObjectId commit) {
+        if (commit == null) {
+            throw new RefException("A branch must point at a commit");
+        }
+    }
+}
