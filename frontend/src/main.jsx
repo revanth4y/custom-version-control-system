@@ -1,24 +1,15 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter as Router } from "react-router-dom";
-import { ThemeProvider, BaseStyles } from "@primer/react";
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+import { AuthProvider } from './authContext.jsx'
+import ProjectRoutes from './Routes.jsx';
+import { BrowserRouter as Router } from 'react-router-dom'
 
-import "./theme/primer-vars.css";
-import "./index.css";
-import { gitforgeTheme } from "./theme/gitforge";
-import { AuthProvider } from "./context/AuthProvider.jsx";
-import AppRoutes from "./routes/AppRoutes.jsx";
-
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <ThemeProvider theme={gitforgeTheme} colorMode="night" nightScheme="dark">
-      <BaseStyles>
-        <Router>
-          <AuthProvider>
-            <AppRoutes />
-          </AuthProvider>
-        </Router>
-      </BaseStyles>
-    </ThemeProvider>
-  </React.StrictMode>,
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <AuthProvider>
+    <Router>
+      <ProjectRoutes />
+    </Router>
+  </AuthProvider>
 );
