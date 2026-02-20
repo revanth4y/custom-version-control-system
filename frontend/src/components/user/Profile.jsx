@@ -1,104 +1,104 @@
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
-import "./profile.css";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+
 import Navbar from "../Navbar";
-import { UnderlineNav } from "@primer/react";
-import { BookIcon, RepoIcon } from "@primer/octicons-react";
-import HeatMapProfile from "./HeatMap";
-import { useAuth } from "../../authContext";
+import { useAuth } from "../../hooks/useAuth";
+import { errorMessage } from "../../services/api";
+import { userService } from "../../services/userService";
+import { repoService } from "../../services/repoService";
+import "./profile.css";
 
 const Profile = () => {
-  const navigate = useNavigate();
-  const [userDetails, setUserDetails] = useState({ username: "username" });
-  const { setCurrentUser } = useAuth();
+  const { username } = useParams();
+  const { currentUser } = useAuth();
+
+  const [profile, setProfile] = useState(null);
+  const [repos, setRepos] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUserDetails = async () => {
-      const userId = localStorage.getItem("userId");
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
 
-      if (userId) {
-        try {
-          const response = await axios.get(
-            `http://localhost:3002/userProfile/${userId}`
-          );
-          setUserDetails(response.data);
-        } catch (err) {
-          console.error("Cannot fetch user details: ", err);
-        }
-      }
+    Promise.all([userService.getProfile(username), repoService.listByOwner(username)])
+      .then(([profileData, repoData]) => {
+        if (cancelled) return;
+        setProfile(profileData);
+        setRepos(repoData);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err, "Could not load this profile"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
-    fetchUserDetails();
-  }, []);
+  }, [username]);
+
+  const isOwnProfile = currentUser?.username === username;
 
   return (
     <>
       <Navbar />
-      <UnderlineNav aria-label="Repository">
-        <UnderlineNav.Item
-          aria-current="page"
-          icon={BookIcon}
-          sx={{
-            backgroundColor: "transparent",
-            color: "white",
-            "&:hover": {
-              textDecoration: "underline",
-              color: "white",
-            },
-          }}
-        >
-          Overview
-        </UnderlineNav.Item>
 
-        <UnderlineNav.Item
-          onClick={() => navigate("/repo")}
-          icon={RepoIcon}
-          sx={{
-            backgroundColor: "transparent",
-            color: "whitesmoke",
-            "&:hover": {
-              textDecoration: "underline",
-              color: "white",
-            },
-          }}
-        >
-          Starred Repositories
-        </UnderlineNav.Item>
-      </UnderlineNav>
+      <div className="profile">
+        {loading && <p className="profile__status">Loading…</p>}
+        {error && <p className="profile__status profile__status--error">{error}</p>}
 
-      <button
-        onClick={() => {
-          localStorage.removeItem("token");
-          localStorage.removeItem("userId");
-          setCurrentUser(null);
+        {profile && (
+          <>
+            <header className="profile__header">
+              <div className="profile__avatar" aria-hidden="true">
+                {profile.username.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h1 className="profile__name">{profile.displayName ?? profile.username}</h1>
+                <p className="profile__username">{profile.username}</p>
+                {profile.bio && <p className="profile__bio">{profile.bio}</p>}
+                <p className="profile__joined">
+                  Joined {new Date(profile.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </header>
 
-          window.location.href = "/auth";
-        }}
-        style={{ position: "fixed", bottom: "50px", right: "50px" }}
-        id="logout"
-      >
-        Logout
-      </button>
+            <section>
+              <h2 className="profile__section-title">
+                Repositories <span className="profile__count">{repos.length}</span>
+              </h2>
 
-      <div className="profile-page-wrapper">
-        <div className="user-profile-section">
-          <div className="profile-image"></div>
+              {repos.length === 0 ? (
+                <p className="profile__status">
+                  {isOwnProfile ? "You have no repositories yet." : "No public repositories."}
+                </p>
+              ) : (
+                <ul className="profile__repos">
+                  {repos.map((repo) => (
+                    <li key={repo.id} className="profile__repo">
+                      <div className="profile__repo-header">
+                        <span className="profile__repo-name">{repo.name}</span>
+                        <span className="profile__repo-badge">{repo.visibility.toLowerCase()}</span>
+                      </div>
+                      {repo.description && (
+                        <p className="profile__repo-description">{repo.description}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-          <div className="name">
-            <h3>{userDetails.username}</h3>
-          </div>
-
-          <button className="follow-btn">Follow</button>
-
-          <div className="follower">
-            <p>10 Follower</p>
-            <p>3 Following</p>
-          </div>
-        </div>
-
-        <div className="heat-map-section">
-          <HeatMapProfile />
-        </div>
+            {/*
+              The contribution graph is intentionally omitted until commits exist.
+              It previously rendered randomly generated data, which misrepresents
+              activity; it returns in the phase that adds real commit history.
+            */}
+          </>
+        )}
       </div>
     </>
   );

@@ -1,15 +1,17 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import './index.css'
-import { AuthProvider } from './authContext.jsx'
-import ProjectRoutes from './Routes.jsx';
-import { BrowserRouter as Router } from 'react-router-dom'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter as Router } from "react-router-dom";
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <AuthProvider>
+import "./index.css";
+import { AuthProvider } from "./context/AuthProvider.jsx";
+import ProjectRoutes from "./Routes.jsx";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
     <Router>
-      <ProjectRoutes />
+      <AuthProvider>
+        <ProjectRoutes />
+      </AuthProvider>
     </Router>
-  </AuthProvider>
+  </React.StrictMode>,
 );

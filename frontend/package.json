@@ -1,31 +1,26 @@
 {
-  "name": "frontend",
+  "name": "gitforge-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "vitest",
     "build": "vite build",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@babel/plugin-syntax-jsx": "^7.24.7",
-    "@primer/css": "^21.3.6",
+    "@primer/octicons-react": "^19.11.0",
     "@primer/react": "^36.27.0",
-    "@testing-library/jest-dom": "^6.4.8",
     "@uiw/react-heat-map": "^2.2.2",
     "axios": "^1.7.3",
-    "jsdom": "^24.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.25.1",
-    "text-encoding": "^0.7.0"
+    "react-router-dom": "^6.25.1"
   },
   "devDependencies": {
-    "@babel/preset-env": "^7.25.3",
-    "@babel/preset-react": "^7.24.7",
+    "@testing-library/jest-dom": "^6.4.8",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
     "@types/react": "^18.3.3",
@@ -35,8 +30,7 @@
     "eslint-plugin-react": "^7.34.3",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
-    "install": "^0.13.0",
-    "npm": "^10.8.2",
+    "jsdom": "^24.1.1",
     "vite": "^5.3.4",
     "vitest": "^2.0.5"
   }

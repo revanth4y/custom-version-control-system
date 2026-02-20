@@ -1,101 +1,172 @@
-import React, { useState, useEffect } from "react";
-import "./dashboard.css";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
 import Navbar from "../Navbar";
+import { useAuth } from "../../hooks/useAuth";
+import { errorMessage } from "../../services/api";
+import { repoService } from "../../services/repoService";
+import "./dashboard.css";
 
 const Dashboard = () => {
-  const [repositories, setRepositories] = useState([]);
+  const { currentUser } = useAuth();
+
+  const [ownRepos, setOwnRepos] = useState([]);
+  const [publicRepos, setPublicRepos] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [suggestedRepositories, setSuggestedRepositories] = useState([]);
-  const [searchResults, setSearchResults] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const userId = localStorage.getItem("userId");
+  const [newRepo, setNewRepo] = useState({ name: "", description: "", visibility: "PUBLIC" });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
 
-    const fetchRepositories = async () => {
-      try {
-        const response = await fetch(
-          `http://localhost:3002/repo/user/${userId}`
-        );
-        const data = await response.json();
-        setRepositories(data.repositories);
-      } catch (err) {
-        console.error("Error while fecthing repositories: ", err);
-      }
-    };
+  const load = useCallback(async () => {
+    if (!currentUser) return;
+    setError(null);
 
-    const fetchSuggestedRepositories = async () => {
-      try {
-        const response = await fetch(`http://localhost:3002/repo/all`);
-        const data = await response.json();
-        setSuggestedRepositories(data);
-        console.log(suggestedRepositories);
-      } catch (err) {
-        console.error("Error while fecthing repositories: ", err);
-      }
-    };
-
-    fetchRepositories();
-    fetchSuggestedRepositories();
-  }, []);
-
-  useEffect(() => {
-    if (searchQuery == "") {
-      setSearchResults(repositories);
-    } else {
-      const filteredRepo = repositories.filter((repo) =>
-        repo.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(filteredRepo);
+    try {
+      const [own, discovery] = await Promise.all([
+        repoService.listByOwner(currentUser.username),
+        repoService.listPublic({ size: 10 }),
+      ]);
+      setOwnRepos(own);
+      setPublicRepos(discovery.content);
+    } catch (err) {
+      setError(errorMessage(err, "Could not load repositories"));
+    } finally {
+      setLoading(false);
     }
-  }, [searchQuery, repositories]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const visibleRepos = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return ownRepos;
+    return ownRepos.filter((repo) => repo.name.toLowerCase().includes(query));
+  }, [ownRepos, searchQuery]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setCreateError(null);
+    setCreating(true);
+
+    try {
+      await repoService.create(newRepo);
+      setNewRepo({ name: "", description: "", visibility: "PUBLIC" });
+      await load();
+    } catch (err) {
+      setCreateError(errorMessage(err, "Could not create the repository"));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <>
       <Navbar />
-      <section id="dashboard">
-        <aside>
-          <h3>Suggested Repositories</h3>
-          {suggestedRepositories.map((repo) => {
-            return (
-              <div key={repo._id}>
-                <h4>{repo.name}</h4>
-                <h4>{repo.description}</h4>
-              </div>
-            );
-          })}
-        </aside>
-        <main>
-          <h2>Your Repositories</h2>
-          <div id="search">
-            <input
-              type="text"
-              value={searchQuery}
-              placeholder="Search..."
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          {searchResults.map((repo) => {
-            return (
-              <div key={repo._id}>
-                <h4>{repo.name}</h4>
-                <h4>{repo.description}</h4>
-              </div>
-            );
-          })}
-        </main>
-        <aside>
-          <h3>Upcoming Events</h3>
-          <ul>
-            <li>
-              <p>Tech Conference - Dec 15</p>
-            </li>
-            <li>
-              <p>Developer Meetup - Dec 25</p>
-            </li>
-            <li>
-              <p>React Summit - Jan 5</p>
-            </li>
+
+      <section className="dashboard">
+        <main className="dashboard__main">
+          <h2 className="dashboard__heading">Your repositories</h2>
+
+          <input
+            className="dashboard__search"
+            type="search"
+            placeholder="Find a repository…"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+
+          {error && <p className="dashboard__error">{error}</p>}
+
+          {loading && <p className="dashboard__empty">Loading…</p>}
+
+          {!loading && visibleRepos.length === 0 && (
+            <p className="dashboard__empty">
+              {ownRepos.length === 0
+                ? "You have no repositories yet. Create one to get started."
+                : "No repositories match that search."}
+            </p>
+          )}
+
+          <ul className="repo-list">
+            {visibleRepos.map((repo) => (
+              <li key={repo.id} className="repo-list__item">
+                <div className="repo-list__header">
+                  <Link className="repo-list__name" to={`/${repo.ownerUsername}`}>
+                    {repo.name}
+                  </Link>
+                  <span className="repo-list__badge">{repo.visibility.toLowerCase()}</span>
+                </div>
+                {repo.description && <p className="repo-list__description">{repo.description}</p>}
+              </li>
+            ))}
           </ul>
+        </main>
+
+        <aside className="dashboard__aside">
+          <h3 className="dashboard__heading">New repository</h3>
+
+          <form className="new-repo" onSubmit={handleCreate}>
+            {createError && <p className="dashboard__error">{createError}</p>}
+
+            <label className="new-repo__label" htmlFor="repo-name">
+              Name
+            </label>
+            <input
+              id="repo-name"
+              className="new-repo__input"
+              required
+              value={newRepo.name}
+              onChange={(event) => setNewRepo({ ...newRepo, name: event.target.value })}
+            />
+
+            <label className="new-repo__label" htmlFor="repo-description">
+              Description
+            </label>
+            <input
+              id="repo-description"
+              className="new-repo__input"
+              value={newRepo.description}
+              onChange={(event) => setNewRepo({ ...newRepo, description: event.target.value })}
+            />
+
+            <label className="new-repo__label" htmlFor="repo-visibility">
+              Visibility
+            </label>
+            <select
+              id="repo-visibility"
+              className="new-repo__input"
+              value={newRepo.visibility}
+              onChange={(event) => setNewRepo({ ...newRepo, visibility: event.target.value })}
+            >
+              <option value="PUBLIC">Public</option>
+              <option value="PRIVATE">Private</option>
+            </select>
+
+            <button className="new-repo__submit" type="submit" disabled={creating}>
+              {creating ? "Creating…" : "Create repository"}
+            </button>
+          </form>
+
+          <h3 className="dashboard__heading">Explore</h3>
+          {publicRepos.length === 0 ? (
+            <p className="dashboard__empty">Nothing public yet.</p>
+          ) : (
+            <ul className="repo-list repo-list--compact">
+              {publicRepos.map((repo) => (
+                <li key={repo.id} className="repo-list__item">
+                  <span className="repo-list__name">
+                    {repo.ownerUsername}/{repo.name}
+                  </span>
+                  {repo.description && <p className="repo-list__description">{repo.description}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
         </aside>
       </section>
     </>

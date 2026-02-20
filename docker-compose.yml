@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: gitforge
       POSTGRES_USER: gitforge
-      POSTGRES_PASSWORD: gitforge_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gitforge_dev}
     # Host port 5433 avoids colliding with a natively installed PostgreSQL,
     # which commonly occupies 5432.
     ports:
@@ -18,6 +18,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  server:
+    build: ./server
+    container_name: gitforge-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/gitforge
+      DATABASE_USER: gitforge
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-gitforge_dev}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8080:8080"
 
 volumes:
   gitforge-pgdata:

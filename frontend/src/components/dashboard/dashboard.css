@@ -1,5 +1,147 @@
-#dashboard {
+.dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 32px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px;
+}
+
+@media (max-width: 800px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard__heading {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.dashboard__aside .dashboard__heading:not(:first-child) {
+  margin-top: 28px;
+}
+
+.dashboard__search {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background-color: #0d1117;
+  color: #e6edf3;
+  font: inherit;
+}
+
+.dashboard__search:focus {
+  outline: none;
+  border-color: #388bfd;
+}
+
+.dashboard__empty {
+  color: #8b949e;
+  font-size: 0.9rem;
+}
+
+.dashboard__error {
+  padding: 9px 12px;
+  border: 1px solid #f85149;
+  border-radius: 6px;
+  background-color: rgba(248, 81, 73, 0.1);
+  color: #ff7b72;
+  font-size: 0.85rem;
+}
+
+.repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repo-list__item {
+  padding: 14px 0;
+  border-bottom: 1px solid #21262d;
+}
+
+.repo-list__header {
   display: flex;
-  width: 1080px;
-  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.repo-list__name {
+  color: #58a6ff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.repo-list__name:hover {
+  text-decoration: underline;
+}
+
+.repo-list__badge {
+  padding: 1px 8px;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  color: #8b949e;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.repo-list__description {
+  margin: 6px 0 0;
+  color: #8b949e;
+  font-size: 0.87rem;
+}
+
+.repo-list--compact .repo-list__item {
+  padding: 10px 0;
+}
+
+.new-repo {
+  display: flex;
+  flex-direction: column;
+}
+
+.new-repo__label {
+  margin-bottom: 5px;
+  font-size: 0.82rem;
+  color: #e6edf3;
+}
+
+.new-repo__input {
+  margin-bottom: 14px;
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background-color: #0d1117;
+  color: #e6edf3;
+  font: inherit;
+}
+
+.new-repo__input:focus {
+  outline: none;
+  border-color: #388bfd;
+}
+
+.new-repo__submit {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background-color: #238636;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.new-repo__submit:hover:not(:disabled) {
+  background-color: #2ea043;
+}
+
+.new-repo__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

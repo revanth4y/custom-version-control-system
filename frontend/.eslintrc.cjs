@@ -13,6 +13,9 @@ module.exports = {
   plugins: ['react-refresh'],
   rules: {
     'react/jsx-no-target-blank': 'off',
+    // The project does not use the prop-types package; component contracts are
+    // kept small and documented in place instead.
+    'react/prop-types': 'off',
     'react-refresh/only-export-components': [
       'warn',
       { allowConstantExport: true },
