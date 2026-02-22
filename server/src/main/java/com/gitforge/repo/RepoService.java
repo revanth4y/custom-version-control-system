@@ -8,6 +8,8 @@ import com.gitforge.repo.dto.RepoResponse;
 import com.gitforge.repo.dto.UpdateRepoRequest;
 import com.gitforge.user.User;
 import com.gitforge.user.UserService;
+import com.gitforge.vcs.repository.RepositoryId;
+import com.gitforge.vcs.repository.VcsRepositoryFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,12 +32,20 @@ import java.util.UUID;
 @Service
 public class RepoService {
 
+    /** The branch a new repository's HEAD names before its first commit. */
+    private static final String DEFAULT_BRANCH = "main";
+
     private final RepoRepository repoRepository;
     private final UserService userService;
+    private final VcsRepositoryFactory vcsRepositoryFactory;
 
-    public RepoService(RepoRepository repoRepository, UserService userService) {
+    public RepoService(
+            RepoRepository repoRepository,
+            UserService userService,
+            VcsRepositoryFactory vcsRepositoryFactory) {
         this.repoRepository = repoRepository;
         this.userService = userService;
+        this.vcsRepositoryFactory = vcsRepositoryFactory;
     }
 
     @Transactional
@@ -43,8 +53,20 @@ public class RepoService {
         if (repoRepository.existsByOwnerAndNameIgnoreCase(owner, request.name())) {
             throw new ConflictException("You already own a repository named '" + request.name() + "'");
         }
-        Repo repo = new Repo(owner, request.name(), request.description(), request.visibility());
-        return RepoResponse.from(repoRepository.save(repo));
+        Repo repo = repoRepository.save(new Repo(owner, request.name(), request.description(), request.visibility()));
+
+        // Version-control storage is created once the row exists, so the
+        // repository has HEAD -> refs/heads/main from the moment it is visible.
+        // The branch itself appears with the first commit.
+        //
+        // Filesystems are not transactional: if this transaction were to roll
+        // back afterwards, the directory would remain without a row pointing at
+        // it. Reclaiming such orphans is deliberately left to a later
+        // maintenance phase rather than handled by deleting data here.
+        vcsRepositoryFactory.initialise(
+                RepositoryId.of(repo.getId().toString()), DEFAULT_BRANCH);
+
+        return RepoResponse.from(repo);
     }
 
     /**
@@ -59,6 +81,22 @@ public class RepoService {
 
         if (!repo.isReadableBy(viewer)) {
             throw new NotFoundException("Repository not found");
+        }
+        return repo;
+    }
+
+    /**
+     * Loads a repository the viewer is allowed to modify, by owner and name.
+     *
+     * <p>Applies the same two rules as the id-based form: an unreadable
+     * repository is reported as missing before any permission problem is
+     * mentioned, so its existence is never disclosed.
+     */
+    @Transactional(readOnly = true)
+    public Repo requireWritable(String ownerUsername, String repoName, User viewer) {
+        Repo repo = requireReadable(ownerUsername, repoName, viewer);
+        if (!repo.isOwnedBy(viewer)) {
+            throw new ForbiddenException("Only the repository owner may modify it");
         }
         return repo;
     }

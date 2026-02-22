@@ -28,6 +28,10 @@ server:
     include-stacktrace: never
 
 gitforge:
+  storage:
+    # One directory per repository, holding its object store and references.
+    # The only application state that cannot be rebuilt if lost.
+    root: ${VCS_STORAGE_ROOT:./storage}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   jwt:

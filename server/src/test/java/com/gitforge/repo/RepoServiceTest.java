@@ -42,6 +42,9 @@ class RepoServiceTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private com.gitforge.vcs.repository.VcsRepositoryFactory vcsRepositoryFactory;
+
     @InjectMocks
     private RepoService repoService;
 
