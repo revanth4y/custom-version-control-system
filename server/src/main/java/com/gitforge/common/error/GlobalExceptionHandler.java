@@ -6,16 +6,23 @@ import com.gitforge.vcs.storage.ObjectStoreException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.ResponseEntity.BodyBuilder;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Translates exceptions into {@link ApiError} responses.
@@ -123,6 +130,64 @@ public class GlobalExceptionHandler {
         ApiError body = ApiError.of(
                 500, "STORAGE_ERROR", "The repository could not be read", request.getRequestURI());
         return ResponseEntity.internalServerError().body(body);
+    }
+
+    /**
+     * The request never reached a controller: no route matched the path, the
+     * route exists but not for this method, or the body's media type is not one
+     * any handler accepts.
+     *
+     * <p>All three are the caller's mistake, but Spring surfaces them as
+     * exceptions that would otherwise reach the catch-all below and be reported
+     * as 500 - telling the client the server is broken when the request was, and
+     * logging a stack trace for each one. They are mapped to their proper status
+     * codes here.
+     *
+     * <p>{@code Allow} and {@code Accept} carry the supported alternatives, which
+     * is what makes a 405 or 415 actionable rather than merely correct.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoRoute(
+            NoResourceFoundException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(404, "NOT_FOUND", "No such endpoint", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(
+                405,
+                "METHOD_NOT_ALLOWED",
+                "%s is not supported for this endpoint".formatted(ex.getMethod()),
+                request.getRequestURI());
+
+        BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        Set<HttpMethod> allowed = ex.getSupportedHttpMethods();
+        if (allowed != null && !allowed.isEmpty()) {
+            response.allow(allowed.toArray(new HttpMethod[0]));
+        }
+        return response.body(body);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(
+                415,
+                "UNSUPPORTED_MEDIA_TYPE",
+                "This endpoint does not accept that content type",
+                request.getRequestURI());
+
+        BodyBuilder response = ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        List<MediaType> supported = ex.getSupportedMediaTypes();
+        if (!supported.isEmpty()) {
+            response.header("Accept", MediaType.toString(supported));
+        }
+        return response.body(body);
     }
 
     @ExceptionHandler(Exception.class)
