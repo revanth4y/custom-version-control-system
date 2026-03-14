@@ -4,6 +4,7 @@ import com.gitforge.common.error.BadRequestException;
 import com.gitforge.common.error.NotFoundException;
 import com.gitforge.user.User;
 import com.gitforge.vcs.object.FileMode;
+import com.gitforge.vcs.object.TextContent;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.repository.FileChange;
 import com.gitforge.vcs.repository.VcsRepository;
@@ -13,14 +14,10 @@ import com.gitforge.vcsapi.dto.PutContentRequest;
 import com.gitforge.vcsapi.dto.TreeEntryResponse;
 import org.springframework.stereotype.Service;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Browsing and writing repository contents.
@@ -88,15 +85,13 @@ public class ContentApiService {
     /**
      * Presents a blob in a form JSON can carry without loss.
      *
-     * <p>Content is treated as text only if it strictly decodes as UTF-8 and
-     * holds no NUL byte; anything else is base64. The decoder is configured to
-     * report malformed input rather than substitute replacement characters,
-     * which is what stops a binary file from being silently corrupted into
-     * lossy text.
+     * <p>Text or binary is decided by {@link TextContent}, the same rule the diff
+     * engine uses, so a file returned here as base64 is exactly the file the
+     * differ declines to line-diff.
      */
     private static BlobResponse describe(String path, TreeEntry entry, byte[] content) {
-        String text = asUtf8(content);
-        boolean binary = text == null;
+        Optional<String> text = TextContent.asText(content);
+        boolean binary = text.isEmpty();
 
         return new BlobResponse(
                 path,
@@ -105,25 +100,7 @@ public class ContentApiService {
                 content.length,
                 binary,
                 binary ? BASE_64 : UTF_8,
-                binary ? Base64.getEncoder().encodeToString(content) : text);
-    }
-
-    /** The text form of {@code content}, or null if it is not valid UTF-8 text. */
-    private static String asUtf8(byte[] content) {
-        for (byte value : content) {
-            if (value == 0) {
-                return null;
-            }
-        }
-        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT);
-        try {
-            CharBuffer decoded = decoder.decode(ByteBuffer.wrap(content));
-            return decoded.toString();
-        } catch (CharacterCodingException ex) {
-            return null;
-        }
+                binary ? Base64.getEncoder().encodeToString(content) : text.get());
     }
 
     static byte[] decode(String content, String encoding) {

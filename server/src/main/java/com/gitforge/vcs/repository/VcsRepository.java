@@ -34,6 +34,8 @@ public final class VcsRepository {
     private final RepositoryReader reader;
     private final CommitService commits;
     private final MergeOrchestrator merges;
+    private final DiffService diffs;
+    private final RepositoryStatistics statistics;
 
     VcsRepository(RepositoryId id, ObjectStore objects, RefStore refs) {
         this.id = id;
@@ -45,6 +47,8 @@ public final class VcsRepository {
         this.reader = new RepositoryReader(objects, branches, graph);
         this.commits = new CommitService(objects, refs, branches);
         this.merges = new MergeOrchestrator(objects, refs, branches, graph);
+        this.diffs = new DiffService(objects);
+        this.statistics = new RepositoryStatistics(objects, branches, graph);
     }
 
     public RepositoryId id() {
@@ -77,6 +81,16 @@ public final class VcsRepository {
     /** Repository-level merging of one branch into another. */
     public MergeOrchestrator merges() {
         return merges;
+    }
+
+    /** Line-level differences between repository states. */
+    public DiffService diffs() {
+        return diffs;
+    }
+
+    /** Aggregate facts derived from the object store. */
+    public RepositoryStatistics statistics() {
+        return statistics;
     }
 
     @Override
