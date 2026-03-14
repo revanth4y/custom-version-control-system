@@ -26,10 +26,18 @@ export const AuthProvider = ({ children }) => {
         session.save(session.getToken(), user);
         setCurrentUser(user);
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return;
-        session.clear();
-        setCurrentUser(null);
+
+        // Only a rejected token means the session is over. Any other failure —
+        // the server being unreachable, a 500, a timeout — says nothing about
+        // whether the token is still good, and signing the user out over a
+        // connection blip would lose their place for no reason. The cached user
+        // is kept and the next request will re-check.
+        if (error?.response?.status === 401) {
+          session.clear();
+          setCurrentUser(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
