@@ -2,6 +2,7 @@ import { Navigate, useRoutes } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
 import BlobView from "../pages/BlobView";
+import BranchList from "../pages/BranchList";
 import CreateRepository from "../pages/CreateRepository";
 import Dashboard from "../pages/Dashboard";
 import DesignSystem from "../pages/DesignSystem";
@@ -58,6 +59,7 @@ const AppRoutes = () =>
             { path: "tree/:ref/*", element: <RepositoryCode /> },
             { path: "tree/:ref", element: <RepositoryCode /> },
             { path: "blob/:ref/*", element: <BlobView /> },
+            { path: "branches", element: <BranchList /> },
           ],
         },
       ],
