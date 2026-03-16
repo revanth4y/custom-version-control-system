@@ -1,0 +1,61 @@
+# Line endings.
+#
+# Git stores every text file with LF and converts on checkout, so a file's
+# endings no longer depend on which machine last touched it. Before this, the
+# repository held a mix of both: 58 of 277 tracked files were CRLF, and an
+# editor rewriting a file's endings turned a two-line change into a whole-file
+# diff that buried the actual edit.
+#
+# `text=auto` lets Git decide what is text; the explicit rules below fix the
+# working-tree ending too, so what is on disk matches what is committed
+# regardless of anyone's core.autocrlf setting.
+
+* text=auto
+
+# The two cases where the ending is not cosmetic: Windows shells require CRLF,
+# and POSIX shells fail on it - a CRLF shell script dies with a confusing
+# "bad interpreter" or "\r: command not found".
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+mvnw  text eol=lf
+
+# Source and configuration.
+*.java       text eol=lf
+*.js         text eol=lf
+*.jsx        text eol=lf
+*.cjs        text eol=lf
+*.mjs        text eol=lf
+*.css        text eol=lf
+*.html       text eol=lf
+*.json       text eol=lf
+*.md         text eol=lf
+*.properties text eol=lf
+*.sql        text eol=lf
+*.svg        text eol=lf
+*.xml        text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+Dockerfile    text eol=lf
+.gitignore    text eol=lf
+.gitattributes text eol=lf
+.dockerignore text eol=lf
+*.example     text eol=lf
+
+# Binary files, listed ahead of need so that a future image, font or archive
+# cannot be corrupted by end-of-line conversion or rendered as a text diff.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.pdf   binary
+*.jar   binary
+*.zip   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
