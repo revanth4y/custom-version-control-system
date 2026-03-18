@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 import { Box, Button, Heading, Text, Spinner } from "@primer/react";
-import { GitCommitIcon } from "@primer/octicons-react";
+import { GitCommitIcon, GitCompareIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";
@@ -90,6 +90,10 @@ const CommitHistory = () => {
             Every line is a parent link taken from the commit itself.
           </Text>
         </Box>
+
+        <Button as={RouterLink} to={`/${owner}/${name}/compare`} leadingVisual={GitCompareIcon}>
+          Compare
+        </Button>
       </Box>
 
       {hasNoCommits ? (
@@ -148,9 +152,7 @@ const CommitHistory = () => {
                     <CommitRow
                       key={node.sha}
                       node={node}
-                      onSelect={(commit) =>
-                        navigate(`/${owner}/${name}/tree/${encodeURIComponent(commit.sha)}`)
-                      }
+                      onSelect={(commit) => navigate(`/${owner}/${name}/commit/${commit.sha}`)}
                     />
                   ))}
                 </Box>

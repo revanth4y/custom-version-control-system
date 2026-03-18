@@ -145,6 +145,33 @@ class DiffServiceTest {
             assertThat(diff.binary()).isTrue();
             assertThat(diff.hunks()).isEmpty();
             assertThat(diff.tooLarge()).isFalse();
+
+            // Size is the only measure of a change that cannot be shown as
+            // lines, so it is reported even when nothing else can be.
+            assertThat(diff.newSize()).isEqualTo(256);
+            assertThat(diff.oldSize()).isZero();
+        }
+
+        @Test
+        void sizesAreReportedForBothSidesOfAChange() {
+            commit("Initial", FileChange.put("notes.txt", bytes("one\n")));
+            ObjectId second = commit("Extend", FileChange.put("notes.txt", bytes("one\ntwo\n")));
+
+            FileDiff diff = only(repository.diffs().diffCommit(second, null));
+
+            assertThat(diff.oldSize()).isEqualTo(4);
+            assertThat(diff.newSize()).isEqualTo(8);
+        }
+
+        @Test
+        void aDeletedFileHasNoNewSize() {
+            commit("Initial", FileChange.put("gone.txt", bytes("bye\n")));
+            ObjectId second = commit("Remove", FileChange.delete("gone.txt"));
+
+            FileDiff diff = only(repository.diffs().diffCommit(second, null));
+
+            assertThat(diff.oldSize()).isEqualTo(4);
+            assertThat(diff.newSize()).isZero();
         }
 
         @Test

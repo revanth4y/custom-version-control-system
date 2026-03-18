@@ -3,7 +3,9 @@ import { Navigate, useRoutes } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import BlobView from "../pages/BlobView";
 import BranchList from "../pages/BranchList";
+import CommitDetail from "../pages/CommitDetail";
 import CommitHistory from "../pages/CommitHistory";
+import Compare from "../pages/Compare";
 import CreateRepository from "../pages/CreateRepository";
 import Dashboard from "../pages/Dashboard";
 import DesignSystem from "../pages/DesignSystem";
@@ -63,6 +65,8 @@ const AppRoutes = () =>
             { path: "branches", element: <BranchList /> },
             { path: "commits", element: <CommitHistory /> },
             { path: "commits/:ref", element: <CommitHistory /> },
+            { path: "commit/:sha", element: <CommitDetail /> },
+            { path: "compare", element: <Compare /> },
           ],
         },
       ],
