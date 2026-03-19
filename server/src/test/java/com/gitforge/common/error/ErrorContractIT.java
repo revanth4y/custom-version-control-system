@@ -70,6 +70,49 @@ class ErrorContractIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
+    /**
+     * These parameters travel in shareable URLs, so a stale or hand-edited link
+     * must not look like an outage. ?status=bogus reached the catch-all and was
+     * reported as a 500 before this was handled.
+     */
+    @Test
+    void anUnconvertibleQueryParameterIsBadRequestNotServerError() throws Exception {
+        String token = registerAndLogin("octocat");
+        mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"demo","description":"a repo","visibility":"PUBLIC"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/issues").param("status", "bogus"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                // The accepted values are our own constants, so naming them is
+                // what makes the message actionable.
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("OPEN")))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("CLOSED")))
+                // The value the caller sent is arbitrary input and is not echoed back.
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("bogus"))));
+    }
+
+    @Test
+    void aValidEnumQueryParameterStillWorks() throws Exception {
+        String token = registerAndLogin("hubot");
+        mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"demo","description":"a repo","visibility":"PUBLIC"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/repositories/hubot/demo/issues").param("status", "OPEN"))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void malformedJsonIsBadRequestNotServerError() throws Exception {
         String token = registerAndLogin("octocat");

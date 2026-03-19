@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Box, Button, Heading, Text, TextInput, Select, Octicon, Link } from "@primer/react";
-import { GitBranchIcon, PlusIcon, SearchIcon, TrashIcon } from "@primer/octicons-react";
+import { GitBranchIcon, GitMergeIcon, PlusIcon, SearchIcon, TrashIcon } from "@primer/octicons-react";
 import { Link as RouterLink } from "react-router-dom";
 
 import PageContainer from "../components/layout/PageContainer";
@@ -78,11 +78,16 @@ const BranchList = () => {
           </Text>
         </Box>
 
-        {canWrite && (
-          <Button leadingVisual={PlusIcon} variant="primary" onClick={() => setCreating(true)}>
-            New branch
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+          <Button as={RouterLink} to={`/${owner}/${name}/merge`} leadingVisual={GitMergeIcon}>
+            Merge
           </Button>
-        )}
+          {canWrite && (
+            <Button leadingVisual={PlusIcon} variant="primary" onClick={() => setCreating(true)}>
+              New branch
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {notice && (

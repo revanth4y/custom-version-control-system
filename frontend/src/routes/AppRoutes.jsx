@@ -6,6 +6,10 @@ import BranchList from "../pages/BranchList";
 import CommitDetail from "../pages/CommitDetail";
 import CommitHistory from "../pages/CommitHistory";
 import Compare from "../pages/Compare";
+import IssueDetailPage from "../pages/IssueDetailPage";
+import MergePage from "../pages/MergePage";
+import NewIssue from "../pages/NewIssue";
+import RepositoryIssues from "../pages/RepositoryIssues";
 import CreateRepository from "../pages/CreateRepository";
 import Dashboard from "../pages/Dashboard";
 import DesignSystem from "../pages/DesignSystem";
@@ -67,6 +71,12 @@ const AppRoutes = () =>
             { path: "commits/:ref", element: <CommitHistory /> },
             { path: "commit/:sha", element: <CommitDetail /> },
             { path: "compare", element: <Compare /> },
+            { path: "merge", element: <MergePage /> },
+            { path: "issues", element: <RepositoryIssues /> },
+            // Declared before the number so "new" is never read as one; React
+            // Router ranks static segments higher regardless.
+            { path: "issues/new", element: <NewIssue /> },
+            { path: "issues/:number", element: <IssueDetailPage /> },
           ],
         },
       ],

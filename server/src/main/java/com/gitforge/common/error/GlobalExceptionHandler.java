@@ -19,10 +19,13 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Translates exceptions into {@link ApiError} responses.
@@ -188,6 +191,39 @@ public class GlobalExceptionHandler {
             response.header("Accept", MediaType.toString(supported));
         }
         return response.body(body);
+    }
+
+    /**
+     * A request parameter that could not be converted to the type the handler
+     * declares - {@code ?status=bogus} against an enum, say.
+     *
+     * <p>Without this the conversion failure reaches the catch-all and is
+     * reported as a 500, which blames the server for a value the caller chose.
+     * It matters more than it looks: these parameters travel in shareable URLs,
+     * so a stale or hand-edited link would look like an outage.
+     *
+     * <p>For an enum the accepted values are listed, because they are our own
+     * constants and naming them is what makes the error actionable. The value
+     * that was actually sent is not echoed back - it is arbitrary input, and the
+     * parameter name alone identifies the problem.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+        Class<?> required = ex.getRequiredType();
+        String detail;
+        if (required != null && required.isEnum()) {
+            String accepted = Arrays.stream(required.getEnumConstants())
+                    .map(Object::toString)
+                    .collect(Collectors.joining(", "));
+            detail = "'%s' must be one of: %s".formatted(ex.getName(), accepted);
+        } else {
+            detail = "'%s' is not in the expected format".formatted(ex.getName());
+        }
+
+        ApiError body = ApiError.of(400, "BAD_REQUEST", detail, request.getRequestURI());
+        return ResponseEntity.badRequest().body(body);
     }
 
     @ExceptionHandler(Exception.class)
