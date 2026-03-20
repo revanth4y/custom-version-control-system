@@ -45,10 +45,9 @@ const RepoHeader = ({ repository }) => {
               icon={isPrivate ? LockIcon : RepoIcon}
               sx={{ color: "fg.muted", mr: 2, verticalAlign: "baseline" }}
             />
-            {/* The owner is shown but not linked: there is no profile page yet,
-                and a link that silently redirects to the dashboard is worse
-                than plain text. It becomes a link when that page exists. */}
-            <Text sx={{ color: "accent.fg" }}>{repository.ownerUsername}</Text>
+            <Link as={RouterLink} to={`/${repository.ownerUsername}`} sx={{ color: "accent.fg" }}>
+              {repository.ownerUsername}
+            </Link>
             <Text sx={{ color: "fg.muted", mx: 1 }}>/</Text>
             <Link
               as={RouterLink}

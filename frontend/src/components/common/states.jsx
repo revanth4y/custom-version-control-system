@@ -86,6 +86,7 @@ export const EmptyState = ({ icon = InboxIcon, title, message, action, minHeight
 export const AsyncBoundary = ({
   loading,
   error,
+  errorTitle,
   isEmpty,
   onRetry,
   loadingLabel,
@@ -97,7 +98,9 @@ export const AsyncBoundary = ({
     return <LoadingState label={loadingLabel} minHeight={minHeight} />;
   }
   if (error) {
-    return <ErrorState message={error} onRetry={onRetry} minHeight={minHeight} />;
+    // A page that knows what its failure means can say so: "No such user"
+    // is more use than "Something went wrong" when the request 404s.
+    return <ErrorState title={errorTitle} message={error} onRetry={onRetry} minHeight={minHeight} />;
   }
   if (isEmpty) {
     return empty ?? <EmptyState title="Nothing here yet" minHeight={minHeight} />;

@@ -23,6 +23,13 @@ import java.util.Map;
  *
  * <p>Nothing is written until the working tree has been checked, so a refused
  * checkout leaves the repository exactly as it was — HEAD included.
+ *
+ * <p><strong>Not used by the web application.</strong> Repositories served over
+ * HTTP are bare: they hold objects and refs and no working tree, because a
+ * server has no checkout for anyone to edit. This is retained deliberately
+ * rather than deleted — it is the half of the engine a local clone or a command
+ * line client would need, it is covered by its own tests, and removing it would
+ * throw away working capability to make a directory listing shorter.
  */
 public final class CheckoutService {
 

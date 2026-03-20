@@ -27,10 +27,10 @@ export const tokens = {
   emberBright: "#F08E5A",
   emberMuted: "#8A4A26",
   emberSubtle: "rgba(224, 118, 61, 0.14)",
-  success: "#4F9D69",
-  successSubtle: "rgba(79, 157, 105, 0.14)",
-  danger: "#D9534F",
-  dangerSubtle: "rgba(217, 83, 79, 0.14)",
+  success: "#57A571",
+  successSubtle: "rgba(87, 165, 113, 0.14)",
+  danger: "#ED6763",
+  dangerSubtle: "rgba(237, 103, 99, 0.14)",
   attention: "#D8A33C",
   attentionSubtle: "rgba(216, 163, 60, 0.14)",
 };
@@ -120,13 +120,18 @@ const gitforgeDark = {
       selectedBg: "#2A2F3A",
       primary: {
         ...primerTheme.colorSchemes.dark.colors.btn.primary,
-        text: "#FFFFFF",
+        // Dark on ember, not white. Ember is a mid-tone orange: white text on
+        // it measures 3.08:1, below the 4.5:1 that normal text needs, while
+        // the canvas colour on the same background measures 5.88:1. Keeping
+        // the accent vivid and darkening the label is the readable way round.
+        text: tokens.canvas,
         bg: tokens.ember,
         border: "rgba(0,0,0,0.2)",
         hoverBg: tokens.emberBright,
+        hoverText: tokens.canvas,
         hoverBorder: "rgba(0,0,0,0.2)",
         selectedBg: tokens.emberMuted,
-        disabledText: "rgba(255,255,255,0.5)",
+        disabledText: "rgba(20, 22, 28, 0.55)",
         disabledBg: "rgba(224, 118, 61, 0.5)",
       },
       danger: {
