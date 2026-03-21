@@ -2,6 +2,7 @@ package com.gitforge;
 
 import com.gitforge.issue.IssueRepository;
 import com.gitforge.repo.RepoRepository;
+import com.gitforge.security.AuthAttemptLimiter;
 import com.gitforge.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,9 @@ public abstract class AbstractIntegrationTest {
         }
     }
 
+    /** What MockMvc reports as the remote address of every request it makes. */
+    protected static final String LOCAL_ADDRESS = "127.0.0.1";
+
     @Autowired
     protected MockMvc mockMvc;
 
@@ -69,6 +73,9 @@ public abstract class AbstractIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private AuthAttemptLimiter authAttemptLimiter;
+
     /**
      * The container and storage directory are shared across the suite, so each
      * test starts from an empty schema and empty repository storage.
@@ -79,6 +86,10 @@ public abstract class AbstractIntegrationTest {
         repoRepository.deleteAll();
         userRepository.deleteAll();
         clearStorage();
+        // The limiter is a singleton in a context cached across test classes, so
+        // a test that deliberately exhausts the allowance would otherwise lock
+        // every later test out of signing in.
+        authAttemptLimiter.recordSuccess(LOCAL_ADDRESS);
     }
 
     private static void clearStorage() {
