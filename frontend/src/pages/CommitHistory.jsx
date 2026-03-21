@@ -1,0 +1,214 @@
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Box, Button, Heading, Text, Spinner } from "@primer/react";
+import { GitCommitIcon } from "@primer/octicons-react";
+
+import PageContainer from "../components/layout/PageContainer";
+import { AsyncBoundary, EmptyState } from "../components/common/states";
+import Notice from "../components/common/Notice";
+import BranchSelector from "../components/branch/BranchSelector";
+import CommitGraph from "../components/commit/CommitGraph";
+import CommitRow from "../components/commit/CommitRow";
+import { ROW_HEIGHT, graphWidth } from "../components/commit/graphMetrics";
+import { useAsync } from "../hooks/useAsync";
+import { useRepository } from "../hooks/useRepository";
+import { commitService } from "../services/commitService";
+import { buildCommitGraph } from "../utils/commitGraph";
+
+const PAGE_SIZE = 30;
+
+/** The server refuses more than this, so asking for more would silently return less. */
+const MAX_HISTORY = 200;
+
+/**
+ * The commit history of one revision, with its graph.
+ *
+ * The window grows by refetching with a larger limit rather than by appending
+ * pages. The engine has no cursor, and stitching separately-fetched pages
+ * together would mean guessing how they join - exactly the kind of inferred
+ * relationship the graph must never draw. Refetching keeps every edge derived
+ * from one coherent payload, and the layout is deterministic, so the part of
+ * the graph already on screen redraws identically.
+ */
+const CommitHistory = () => {
+  const { owner, name, head, canWrite, reloadHead } = useRepository();
+  const params = useParams();
+  const navigate = useNavigate();
+
+  const [limit, setLimit] = useState(PAGE_SIZE);
+
+  const refName = params.ref ? decodeURIComponent(params.ref) : head?.branch ?? "HEAD";
+
+  const history = useAsync(
+    () => commitService.history(owner, name, { ref: refName, limit }),
+    [owner, name, refName, limit],
+  );
+
+  const commits = useMemo(() => history.data ?? [], [history.data]);
+  const graph = useMemo(() => buildCommitGraph(commits), [commits]);
+
+  // The server returning fewer commits than asked for is how we know the
+  // history ended; there is no flag for it.
+  const reachedEnd = commits.length < limit;
+  const atServerCap = limit >= MAX_HISTORY;
+
+  const changeRef = useCallback(
+    (branch) => {
+      setLimit(PAGE_SIZE);
+      navigate(`/${owner}/${name}/commits/${encodeURIComponent(branch)}`);
+    },
+    [navigate, owner, name],
+  );
+
+  const hasNoCommits = !head?.commit;
+
+  return (
+    <PageContainer>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 3,
+          flexWrap: "wrap",
+          mb: 3,
+        }}
+      >
+        <BranchSelector
+          owner={owner}
+          name={name}
+          currentRef={refName}
+          headBranch={head?.branch}
+          canWrite={canWrite}
+          onRefChange={changeRef}
+          onHeadChanged={reloadHead}
+        />
+        <Box sx={{ flex: 1, minWidth: 0, pt: 1 }}>
+          <Heading as="h2" sx={{ fontSize: 2, fontWeight: 600 }}>
+            Commits
+          </Heading>
+          <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+            Every line is a parent link taken from the commit itself.
+          </Text>
+        </Box>
+      </Box>
+
+      {hasNoCommits ? (
+        <Panel>
+          <EmptyState
+            icon={GitCommitIcon}
+            title="No commits yet"
+            message="Nothing has been committed to this repository, so there is no history to draw."
+            minHeight="220px"
+          />
+        </Panel>
+      ) : (
+        <AsyncBoundary
+          loading={history.loading && commits.length === 0}
+          error={history.error}
+          onRetry={history.reload}
+          loadingLabel="Loading history"
+          minHeight="260px"
+        >
+          {graph.boundaries.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Notice variant="info">
+                Some commits have parents outside this window. Those links end in a faded stub
+                rather than a commit.
+              </Notice>
+            </Box>
+          )}
+
+          <Panel>
+            {/* Graph and rows scroll together as one strip. Two independently
+                scrolling columns would let the dots slide away from the commits
+                they belong to the moment either one moved. */}
+            <Box sx={{ overflowX: "auto" }}>
+              {/* The strip itself may shrink to the panel; it is the graph's
+                  fixed width and the rows' minimum that push past it and turn
+                  the scrollbar on, only when they genuinely do not fit. Asking
+                  for min-content here made every row overflow on a phone even
+                  when there was room. */}
+              <Box sx={{ display: "flex", minWidth: 0, alignItems: "flex-start" }}>
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    pt: 0,
+                    width: `${graphWidth(graph.laneCount)}px`,
+                    minWidth: `${graphWidth(graph.laneCount)}px`,
+                  }}
+                >
+                  <CommitGraph graph={graph} />
+                </Box>
+
+                {/* Narrow enough that a two-lane graph and a row still fit a phone
+                    without scrolling; wider graphs scroll, taking the rows with
+                    them. */}
+                <Box sx={{ flex: 1, minWidth: ["300px", "420px"] }}>
+                  {graph.rows.map((node) => (
+                    <CommitRow
+                      key={node.sha}
+                      node={node}
+                      onSelect={(commit) =>
+                        navigate(`/${owner}/${name}/tree/${encodeURIComponent(commit.sha)}`)
+                      }
+                    />
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+          </Panel>
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 3,
+              flexWrap: "wrap",
+              mt: 3,
+            }}
+          >
+            <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+              Showing {commits.length} {commits.length === 1 ? "commit" : "commits"}
+              {reachedEnd && " — the whole history from here"}
+              {!reachedEnd && atServerCap && " — the most this view will load"}
+            </Text>
+
+            {!reachedEnd && !atServerCap && (
+              <Button
+                onClick={() => setLimit((current) => Math.min(current + PAGE_SIZE, MAX_HISTORY))}
+                disabled={history.loading}
+                leadingVisual={history.loading ? undefined : GitCommitIcon}
+              >
+                {history.loading ? (
+                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                    <Spinner size="small" />
+                    Loading
+                  </Box>
+                ) : (
+                  "Load more history"
+                )}
+              </Button>
+            )}
+          </Box>
+        </AsyncBoundary>
+      )}
+    </PageContainer>
+  );
+};
+
+const Panel = ({ children }) => (
+  <Box
+    sx={{
+      bg: "canvas.subtle",
+      border: "1px solid",
+      borderColor: "border.default",
+      borderRadius: 2,
+      overflow: "hidden",
+    }}
+  >
+    {children}
+  </Box>
+);
+
+export default CommitHistory;
