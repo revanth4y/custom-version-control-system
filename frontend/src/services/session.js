@@ -4,9 +4,14 @@ const USER_KEY = "gitforge.user";
 /**
  * Client-side session storage.
  *
- * Tokens are held in localStorage, which is readable by any script on the page.
- * Moving to an httpOnly refresh cookie with a short-lived in-memory access token
- * is planned for the security-hardening phase.
+ * Tokens are held in localStorage, which is readable by any script on the page —
+ * so an XSS bug would expose the session. The Content-Security-Policy is what
+ * stands in the way of that: no inline script, no external script origin.
+ *
+ * The alternative is an httpOnly cookie, which trades this exposure for CSRF to
+ * defend against and a stateful refresh flow to build. That trade was considered
+ * during hardening and deliberately not taken; it is a different design, not a
+ * missing feature. See docs/security.md.
  */
 export const session = {
   getToken() {

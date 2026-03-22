@@ -7,10 +7,15 @@ import com.gitforge.repo.RepoVisibility;
 import com.gitforge.user.User;
 import com.gitforge.user.UserService;
 import com.gitforge.vcs.object.Commit;
+import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.ref.RefException;
 import com.gitforge.vcs.repository.VcsRepository;
 import com.gitforge.vcs.repository.VcsRepositoryFactory;
+import com.gitforge.vcs.storage.ObjectStoreException;
 import com.gitforge.vcsapi.dto.ContributionsResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,9 +36,15 @@ import java.util.TreeMap;
  * pre-aggregated or stored, so the figures cannot drift away from the history
  * they describe.
  *
- * <p>Attribution is by <strong>author email</strong>, not repository ownership:
- * commits other people made in your repository are their work, not yours, and
- * commits you made anywhere count as yours.
+ * <p>Attribution is by <strong>author email</strong> within the subject's own
+ * repositories: commits other people made in your repository are their work,
+ * not yours, and are not counted here.
+ *
+ * <p>The converse is a known limitation. Commits you authored in <em>someone
+ * else's</em> repository do not appear on your calendar, because finding them
+ * would mean walking every repository on the server for every profile view.
+ * Counting them properly needs an index of commits by author, which does not
+ * exist yet.
  *
  * <p>Visibility is applied before any counting, so a stranger looking at a
  * profile never sees activity from private repositories — the same rule that
@@ -41,6 +52,8 @@ import java.util.TreeMap;
  */
 @Service
 public class ContributionApiService {
+
+    private static final Logger log = LoggerFactory.getLogger(ContributionApiService.class);
 
     /** A year of history, which is what a contribution calendar shows. */
     private static final int DEFAULT_DAYS = 365;
@@ -69,7 +82,7 @@ public class ContributionApiService {
 
         Map<LocalDate, Integer> counts = new TreeMap<>();
         for (Repo repo : visibleRepositoriesOf(subject, viewer)) {
-            countCommits(repo, subject, start, end, counts);
+            countCommits(repo, subject, start, end).forEach((day, count) -> counts.merge(day, count, Integer::sum));
         }
 
         List<ContributionsResponse.Day> days = new ArrayList<>();
@@ -84,26 +97,49 @@ public class ContributionApiService {
         return new ContributionsResponse(start, end, total, days);
     }
 
-    private void countCommits(
-            Repo repo, User subject, LocalDate start, LocalDate end, Map<LocalDate, Integer> counts) {
-
+    /**
+     * One repository's contribution to the calendar.
+     *
+     * <p>Counted into a map of its own and returned only once the whole
+     * repository has been read, so a repository that fails partway contributes
+     * nothing rather than half of itself.
+     *
+     * <p>A repository whose storage cannot be read is skipped and the rest are
+     * still counted. This profile aggregates every repository a person owns, and
+     * before this one damaged object store took the whole page down with a 500 -
+     * a year of real work hidden by a single unreadable file. The failure is
+     * logged with the repository id so it can be investigated; the response says
+     * nothing about it, because the state of our storage is not something a
+     * visitor to a profile should be told.
+     */
+    private Map<LocalDate, Integer> countCommits(Repo repo, User subject, LocalDate start, LocalDate end) {
         if (!factory.exists(VcsRepositoryProvider.storageIdOf(repo))) {
             // A repository whose storage was never created simply has no commits.
-            return;
+            return Map.of();
         }
-        VcsRepository vcs = factory.open(VcsRepositoryProvider.storageIdOf(repo));
 
-        for (ObjectId id : reachableCommits(vcs)) {
-            Commit commit = vcs.objects().readCommit(id);
+        Map<LocalDate, Integer> counts = new TreeMap<>();
+        try {
+            VcsRepository vcs = factory.open(VcsRepositoryProvider.storageIdOf(repo));
 
-            if (!subject.getEmail().equalsIgnoreCase(commit.author().email())) {
-                continue;
+            for (ObjectId id : reachableCommits(vcs)) {
+                Commit commit = vcs.objects().readCommit(id);
+
+                if (!subject.getEmail().equalsIgnoreCase(commit.author().email())) {
+                    continue;
+                }
+                LocalDate day = commit.author().timestamp().atZone(ZoneOffset.UTC).toLocalDate();
+                if (!day.isBefore(start) && !day.isAfter(end)) {
+                    counts.merge(day, 1, Integer::sum);
+                }
             }
-            LocalDate day = commit.author().timestamp().atZone(ZoneOffset.UTC).toLocalDate();
-            if (!day.isBefore(start) && !day.isAfter(end)) {
-                counts.merge(day, 1, Integer::sum);
-            }
+        } catch (CorruptObjectException | ObjectStoreException | RefException ex) {
+            // Deliberately narrow: damaged storage or unreadable refs. Anything
+            // else is a fault we do not understand and must not swallow.
+            log.warn("Skipping repository {} while counting contributions", repo.getId(), ex);
+            return Map.of();
         }
+        return counts;
     }
 
     /**

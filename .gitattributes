@@ -38,6 +38,10 @@ mvnw  text eol=lf
 *.yml        text eol=lf
 *.yaml       text eol=lf
 
+# nginx reads this inside a Linux container, where a CR at the end of a
+# directive is part of the value.
+*.conf        text eol=lf
+
 Dockerfile    text eol=lf
 .gitignore    text eol=lf
 .gitattributes text eol=lf
