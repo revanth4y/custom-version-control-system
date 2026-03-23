@@ -31,7 +31,7 @@ replay_pid*
 logs/
 *.log
 
-# ---- IDE ----
+# ---- IDE and local tooling ----
 .idea/
 *.iml
 *.ipr
@@ -41,6 +41,11 @@ logs/
 .settings/
 .project
 .classpath
+# Local editor and assistant tooling: machine-specific, and no business being
+# in a repository someone else reads.
+.claude/
+.cursor/
+.aider*
 
 # ---- OS ----
 .DS_Store
