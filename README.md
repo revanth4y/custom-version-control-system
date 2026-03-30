@@ -45,13 +45,14 @@ It is designed for backend engineering demonstrations, system design discussions
 ---
 
 ### Merkle Tree Representation
-Commit (H1)
-|
-v
-Root Tree (H2)
-├── src/ (H3)
-│ └── index.js (H4)
-└── package.json (H5)
+
+```mermaid
+graph TD
+    A[Commit H1] --> B[Root Tree H2]
+    B --> C[src/ H3]
+    B --> D[package.json H5]
+    C --> E[index.js H4]
+```
 
 - Filesystem state is modeled as a hierarchical tree of hashes  
 - Each change propagates upward, producing a new root hash  
@@ -59,7 +60,6 @@ Root Tree (H2)
   - Efficient state reconstruction  
   - Fast change detection  
   - Reliable version comparison  
-
 ---
 
 ### Commit Graph (DAG)
@@ -108,7 +108,7 @@ Root Tree (H2)
 - RESTful APIs for version control operations  
 
 ---
-## 📡 API Examples
+## API Examples
 
 ### Initialize Repository
 POST /init
