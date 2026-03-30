@@ -56,7 +56,8 @@ graph TD
     S -->|file| I[index.js H4]
 ```
 
-> Each node is identified by a cryptographic hash, and any change propagates upward, producing a new root hash.
+> Each object is identified by a cryptographic hash, and any modification propagates upward, producing a new root hash and ensuring integrity.
+> This structure enables efficient change detection, deduplication, and consistent snapshot reconstruction.
 
 - Filesystem state is modeled as a hierarchical tree of hashes  
 - Hash changes propagate upward, updating parent nodes  
