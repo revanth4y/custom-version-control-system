@@ -48,10 +48,13 @@ It is designed for backend engineering demonstrations, system design discussions
 
 ```mermaid
 graph TD
-    A[Commit H1] --> B[Root Tree H2]
-    B --> C[src/ H3]
-    B --> D[package.json H5]
-    C --> E[index.js H4]
+    C[Commit<br/>H1] -->|points to| T[Tree<br/>H2]
+
+    T -->|directory| S[src/<br/>H3]
+    T -->|file| P[package.json<br/>H5]
+
+    S -->|file| I[index.js<br/>H4]
+Each node is identified by a cryptographic hash, and any change propagates upward, producing a new root hash.
 ```
 
 - Filesystem state is modeled as a hierarchical tree of hashes  
@@ -164,13 +167,17 @@ Core Concepts:
 ---
 
 ## Project Structure
-├── controllers/ # Core operations (init, add, commit, revert, history)
-├── middleware/ # Authentication and authorization
-├── storage/ # Blob and tree persistence
-├── routes/ # API definitions
-└── index.js # Application entry point
+
+```text
+.
+├── controllers/        # Core operations (init, add, commit, revert, history)
+├── middleware/         # Authentication and authorization
+├── storage/            # Blob and tree persistence
+├── routes/             # API definitions
+└── index.js            # Application entry point
 
 ---
+```
 ## Performance Considerations
 
 - Hash-based storage avoids duplicate file writes  
