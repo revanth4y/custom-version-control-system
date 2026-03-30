@@ -1,5 +1,5 @@
 # Custom Version Control System (VCS)
-
+> This project reconstructs core Git internals using first-principles system design.
 A Git-inspired version control backend engineered from first principles to model how modern systems manage data integrity, version history, and state transitions.
 
 ## Why This Project?
@@ -108,12 +108,51 @@ Root Tree (H2)
 - RESTful APIs for version control operations  
 
 ---
+## 📡 API Examples
+
+### Initialize Repository
+POST /init
+
+### Stage Files
+POST /add
+{
+  "filePath": "src/index.js"
+}
+
+### Commit Changes
+POST /commit
+{
+  "message": "Initial commit"
+}
+
+### Get Commit History
+GET /history
+
+### Revert to Previous Commit
+POST /revert
+{
+  "commitId": "abc123"
+}
 
 ## Tech Stack
 
 - Backend: Node.js, Express.js  
 - Language: JavaScript  
 - Storage: Local filesystem (atomic writes for consistency)  
+
+##  Design Decisions
+
+### Why Content-Addressable Storage?
+Chosen to ensure deduplication, integrity, and deterministic state tracking.
+
+### Why Immutability?
+Prevents side effects and guarantees consistent history traversal.
+
+### Why Filesystem Instead of DB?
+Simplifies storage layer and mirrors Git’s object storage model for learning purposes.
+
+### Why DAG for Commits?
+Allows scalable history tracking and enables future support for branching and merging.
 
 Core Concepts:
 - SHA-based hashing  
@@ -132,6 +171,12 @@ Core Concepts:
 └── index.js # Application entry point
 
 ---
+## Performance Considerations
+
+- Hash-based storage avoids duplicate file writes  
+- Tree traversal enables efficient snapshot reconstruction  
+- Immutable design simplifies concurrent operations  
+- Filesystem operations optimized using minimal writes  
 
 ## Workflow
 init → add → commit → history → revert
@@ -139,6 +184,12 @@ init → add → commit → history → revert
 Each commit produces a new immutable snapshot of the repository state.
 
 ---
+## Reliability & Edge Cases
+
+- Atomic write operations prevent partial commits  
+- Hash validation ensures data integrity  
+- Duplicate file states handled via content hashing  
+- Safe rollback ensures repository consistency after failures  
 
 ## Limitations
 
@@ -159,6 +210,12 @@ These trade-offs are intentional to maintain focus on core system design princip
 - CLI interface  
 
 ---
+## Learnings
+
+- Deep understanding of how Git internally manages data  
+- Practical experience with Merkle trees and DAG-based systems  
+- Insights into designing immutable and consistent storage systems  
+- Stronger intuition for backend system design trade-offs  
 
 ## Author
 
