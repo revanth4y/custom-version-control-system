@@ -48,22 +48,22 @@ It is designed for backend engineering demonstrations, system design discussions
 
 ```mermaid
 graph TD
-    C[Commit<br/>H1] -->|points to| T[Tree<br/>H2]
+    C[Commit H1] -->|points to| T[Tree H2]
 
-    T -->|directory| S[src/<br/>H3]
-    T -->|file| P[package.json<br/>H5]
+    T -->|directory| S[src/ H3]
+    T -->|file| P[package.json H5]
 
-    S -->|file| I[index.js<br/>H4]
-Each node is identified by a cryptographic hash, and any change propagates upward, producing a new root hash.
+    S -->|file| I[index.js H4]
 ```
 
+> Each node is identified by a cryptographic hash, and any change propagates upward, producing a new root hash.
+
 - Filesystem state is modeled as a hierarchical tree of hashes  
-- Each change propagates upward, producing a new root hash  
+- Hash changes propagate upward, updating parent nodes  
 - Enables:
   - Efficient state reconstruction  
   - Fast change detection  
   - Reliable version comparison  
----
 
 ### Commit Graph (DAG)
 - Commits are represented as nodes in a directed acyclic graph  
