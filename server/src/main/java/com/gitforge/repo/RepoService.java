@@ -57,15 +57,32 @@ public class RepoService {
         Repo repo = repoRepository.findByOwnerUsernameAndName(ownerUsername, repoName)
                 .orElseThrow(() -> new NotFoundException("Repository not found"));
 
-        if (!repo.isReadableBy(viewer)) {
-            throw new NotFoundException("Repository not found");
-        }
-        return repo;
+      if (!repo.isReadableBy(viewer)) {
+    throw new NotFoundException("Repository not found");
+}
+return repo;
+}
+
+/** Loads a repository named by owner/name that the viewer may modify. */
+@Transactional(readOnly = true)
+public Repo requireWritable(String ownerUsername, String repoName, User viewer) {
+    Repo repo = repoRepository.findByOwnerUsernameAndName(ownerUsername, repoName)
+            .orElseThrow(() -> new NotFoundException("Repository not found"));
+
+    if (!repo.isReadableBy(viewer)) {
+        throw new NotFoundException("Repository not found");
     }
 
-    /** Loads a repository the viewer is allowed to modify. */
-    @Transactional(readOnly = true)
-    public Repo requireWritable(UUID repoId, User viewer) {
+    if (!repo.isOwnedBy(viewer)) {
+        throw new ForbiddenException("Only the repository owner may modify it");
+    }
+
+    return repo;
+}
+
+/** Loads a repository the viewer is allowed to modify. */
+@Transactional(readOnly = true)
+public Repo requireWritable(UUID repoId, User viewer) {
         Repo repo = repoRepository.findById(repoId)
                 .orElseThrow(() -> new NotFoundException("Repository not found"));
 
