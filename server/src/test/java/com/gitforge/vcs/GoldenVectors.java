@@ -88,4 +88,39 @@ public final class GoldenVectors {
 
     /** A tree holding one executable file {@code run.sh}. */
     public static final String TREE_EXECUTABLE = "cf0101fa4f3adf029be824f70f016042998940b9";
+
+    // ---- Commits -----------------------------------------------------------
+    //
+    // Produced with git commit-tree against TREE_ROOT, with both author and
+    // committer fixed as:
+    //     Ada Lovelace <ada@example.com> 1700000000 +0000
+    //
+    //   export GIT_AUTHOR_NAME="Ada Lovelace"
+    //   export GIT_AUTHOR_EMAIL="ada@example.com"
+    //   export GIT_AUTHOR_DATE="1700000000 +0000"
+    //   (and the matching GIT_COMMITTER_NAME / _EMAIL / _DATE)
+    //   git commit-tree <tree> [-p <parent>]... -m "<message>"
+
+    /** No parents, message "Initial commit". */
+    public static final String COMMIT_INITIAL = "7aa5addf4dbf73b4b8310cddf4cf1e9cd7232bdb";
+
+    /** Parent COMMIT_INITIAL, message "Second commit". */
+    public static final String COMMIT_SECOND = "6a3c521d994a512e6c946ee57d703a2b9edeeb3d";
+
+    /** Parent COMMIT_INITIAL, message "Branch commit". */
+    public static final String COMMIT_BRANCH = "39d871fb65e3d1c9b335375cb2df2f4759acfe27";
+
+    /** Parents [COMMIT_SECOND, COMMIT_BRANCH], message "Merge branch". */
+    public static final String COMMIT_MERGE = "8706aaa0e767185c33c48bc486585b450e4b455f";
+
+    /** The same merge with its parents swapped: a different commit. */
+    public static final String COMMIT_MERGE_PARENTS_SWAPPED = "2d1bf264ba11e1fd9f2a2156b4f5aa280cf51cb7";
+
+    /** COMMIT_INITIAL's metadata at the same instant but offset +0530. */
+    public static final String COMMIT_OFFSET_0530 = "836fedc2e22a9721276e031f8e6d54aa225b037a";
+
+    /** The fixed signature used by all commit vectors. */
+    public static final String SIGNATURE_NAME = "Ada Lovelace";
+    public static final String SIGNATURE_EMAIL = "ada@example.com";
+    public static final long SIGNATURE_EPOCH_SECONDS = 1_700_000_000L;
 }

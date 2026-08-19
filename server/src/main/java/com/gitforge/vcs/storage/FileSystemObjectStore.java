@@ -1,6 +1,7 @@
 package com.gitforge.vcs.storage;
 
 import com.gitforge.vcs.object.Blob;
+import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectFormat;
 import com.gitforge.vcs.object.ObjectId;
@@ -15,6 +16,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import java.util.zip.DataFormatException;
@@ -133,6 +135,15 @@ public final class FileSystemObjectStore implements ObjectStore {
     }
 
     @Override
+    public Commit readCommit(ObjectId id) {
+        VcsObject object = readRequired(id);
+        if (object instanceof Commit commit) {
+            return commit;
+        }
+        throw new CorruptObjectException("Object " + id + " is a " + object.type().header() + ", not a commit");
+    }
+
+    @Override
     public boolean contains(ObjectId id) {
         requireId(id);
         return Files.isRegularFile(pathFor(id));
@@ -155,6 +166,25 @@ public final class FileSystemObjectStore implements ObjectStore {
                     .filter(Files::isRegularFile)
                     .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
                     .count();
+        } catch (IOException ex) {
+            throw new ObjectStoreException("Could not enumerate objects in " + objectsRoot, ex);
+        }
+    }
+
+    @Override
+    public List<ObjectId> listIds() {
+        if (!Files.isDirectory(objectsRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(objectsRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
+                    // The id is reconstructed from the path: shard directory
+                    // followed by the remainder of the digest.
+                    .map(path -> ObjectId.fromHex(
+                            path.getParent().getFileName() + path.getFileName().toString()))
+                    .toList();
         } catch (IOException ex) {
             throw new ObjectStoreException("Could not enumerate objects in " + objectsRoot, ex);
         }
