@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gitforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gitforge
+      POSTGRES_USER: gitforge
+      POSTGRES_PASSWORD: gitforge_dev
+    # Host port 5433 avoids colliding with a natively installed PostgreSQL,
+    # which commonly occupies 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - gitforge-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitforge -d gitforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gitforge-pgdata:
