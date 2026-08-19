@@ -23,7 +23,9 @@ hs_err_pid*
 replay_pid*
 
 # ---- VCS object store (runtime data, created from Phase 2 onward) ----
-storage/
+# Leading slash anchors this to the repository root. Without it the pattern
+# would also match the vcs/storage source package.
+/storage/
 
 # ---- Logs ----
 logs/
