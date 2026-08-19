@@ -1,56 +1,63 @@
-import React, { useEffect } from "react";
-import {useNavigate, useRoutes} from 'react-router-dom'
+import { Navigate, useRoutes } from "react-router-dom";
 
-// Pages List
 import Dashboard from "./components/dashboard/Dashboard";
 import Profile from "./components/user/Profile";
 import Login from "./components/auth/Login";
 import Signup from "./components/auth/Signup";
+import { useAuth } from "./hooks/useAuth";
 
-// Auth Context
-import { useAuth } from "./authContext";
+/** Renders children only for signed-in users; anonymous callers go to the login page. */
+const RequireAuth = ({ children }) => {
+  const { currentUser, loading } = useAuth();
 
-const ProjectRoutes = ()=>{
-    const {currentUser, setCurrentUser} = useAuth();
-    const navigate = useNavigate();
+  if (loading) return null;
+  return currentUser ? children : <Navigate to="/login" replace />;
+};
 
-    useEffect(()=>{
-        const userIdFromStorage = localStorage.getItem("userId");
+/** Keeps signed-in users away from the login and signup pages. */
+const RequireAnonymous = ({ children }) => {
+  const { currentUser, loading } = useAuth();
 
-        if(userIdFromStorage && !currentUser){
-            setCurrentUser(userIdFromStorage);
-        }
+  if (loading) return null;
+  return currentUser ? <Navigate to="/" replace /> : children;
+};
 
-        if(!userIdFromStorage && !["/auth", "/signup"].includes(window.location.pathname))
-        {
-            navigate("/auth");
-        }
-
-        if(userIdFromStorage && window.location.pathname=='/auth'){
-            navigate("/");
-        }
-    }, [currentUser, navigate, setCurrentUser]);
-
-    let element = useRoutes([
-        {
-            path:"/",
-            element:<Dashboard/>
-        },
-        {
-            path:"/auth",
-            element:<Login/>
-        },
-        {
-            path:"/signup",
-            element:<Signup/>
-        },
-        {
-            path:"/profile",
-            element:<Profile/>
-        }
-    ]);
-
-    return element;
-}
+const ProjectRoutes = () => {
+  return useRoutes([
+    {
+      path: "/",
+      element: (
+        <RequireAuth>
+          <Dashboard />
+        </RequireAuth>
+      ),
+    },
+    {
+      path: "/login",
+      element: (
+        <RequireAnonymous>
+          <Login />
+        </RequireAnonymous>
+      ),
+    },
+    {
+      path: "/signup",
+      element: (
+        <RequireAnonymous>
+          <Signup />
+        </RequireAnonymous>
+      ),
+    },
+    {
+      path: "/:username",
+      element: (
+        <RequireAuth>
+          <Profile />
+        </RequireAuth>
+      ),
+    },
+    { path: "*", element: <Navigate to="/" replace /> },
+  ]);
+};
 
 export default ProjectRoutes;

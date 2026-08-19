@@ -1,30 +1,52 @@
-nav {
+.app-nav {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 2px solid white;
+  padding: 12px 24px;
+  border-bottom: 1px solid #30363d;
+  background-color: #161b22;
 }
 
-nav img {
-  height: 50px;
-  border-radius: 100%;
-}
-nav div {
+.app-nav__brand {
   display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e6edf3;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.05rem;
 }
 
-nav h3 {
-  margin-left: 15px;
-  color: white;
+.app-nav__brand img {
+  color: #e6edf3;
 }
 
-nav p {
-  margin-left: 50px;
-  font-weight: bold;
-  color: white;
+.app-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
-nav h3:hover,
-nav p:hover {
+.app-nav__links a {
+  color: #e6edf3;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.app-nav__links a:hover {
   text-decoration: underline;
+}
+
+.app-nav__logout {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 5px 12px;
+  color: #e6edf3;
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-nav__logout:hover {
+  border-color: #8b949e;
 }
