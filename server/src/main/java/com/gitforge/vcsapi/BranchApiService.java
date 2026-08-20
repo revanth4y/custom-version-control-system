@@ -9,6 +9,7 @@ import com.gitforge.vcs.ref.Head;
 import com.gitforge.vcs.ref.RefException;
 import com.gitforge.vcs.repository.VcsRepository;
 import com.gitforge.vcsapi.dto.BranchResponse;
+import com.gitforge.vcsapi.dto.BranchTipResponse;
 import com.gitforge.vcsapi.dto.CreateBranchRequest;
 import com.gitforge.vcsapi.dto.HeadResponse;
 import com.gitforge.vcsapi.dto.SetHeadRequest;
@@ -41,11 +42,28 @@ public class BranchApiService {
         Optional<String> current = repository.branches().currentBranch();
 
         return repository.branches().listBranches().stream()
-                .map(branch -> new BranchResponse(
-                        branch,
-                        repository.branches().getBranch(branch).map(ObjectId::toHex).orElse(null),
-                        current.filter(branch::equals).isPresent()))
+                .map(branch -> describe(repository, branch, current))
                 .toList();
+    }
+
+    /**
+     * A branch with the commit it points at.
+     *
+     * <p>Reading the tip means one commit read per branch. That is the cost of
+     * showing what each branch actually contains rather than a bare list of
+     * names, and a branch listing is small — the objects are not walked, only
+     * the single commit each reference names.
+     */
+    private BranchResponse describe(VcsRepository repository, String branch, Optional<String> current) {
+        Optional<ObjectId> tip = repository.branches().getBranch(branch);
+
+        return new BranchResponse(
+                branch,
+                tip.map(ObjectId::toHex).orElse(null),
+                current.filter(branch::equals).isPresent(),
+                tip.flatMap(id -> repository.reader().commit(id))
+                        .map(BranchTipResponse::from)
+                        .orElse(null));
     }
 
     public BranchResponse create(String owner, String name, User viewer, CreateBranchRequest request) {
@@ -66,7 +84,13 @@ public class BranchApiService {
             // start point were both settled above.
             throw new BadRequestException(ex.getMessage());
         }
-        return new BranchResponse(request.name(), startCommit.toHex(), false);
+        // The tip is returned with the new branch so the caller can show it
+        // immediately, without a second request for what it already caused.
+        return new BranchResponse(
+                request.name(),
+                startCommit.toHex(),
+                false,
+                repository.reader().commit(startCommit).map(BranchTipResponse::from).orElse(null));
     }
 
     public void delete(String owner, String name, User viewer, String branch) {

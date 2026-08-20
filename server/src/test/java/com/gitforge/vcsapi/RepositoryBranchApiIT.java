@@ -6,6 +6,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -50,6 +53,70 @@ class RepositoryBranchApiIT extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$[0].name").value("main"))
                     .andExpect(jsonPath("$[0].head").value(true))
                     .andExpect(jsonPath("$[0].commit").isNotEmpty());
+        }
+
+        @Test
+        void carriesTheTipCommitOfEachBranch() throws Exception {
+            String json = mockMvc.perform(get("/api/v1/repositories/octocat/demo/branches"))
+                    .andExpect(status().isOk())
+                    // The engine normalises a commit message to exactly one
+                    // trailing newline, and the API passes it through unaltered.
+                    .andExpect(jsonPath("$[0].tip.message").value("Initial commit\n"))
+                    .andExpect(jsonPath("$[0].tip.authorName").value("octocat"))
+                    .andExpect(jsonPath("$[0].tip.timestamp").isNotEmpty())
+                    .andReturn().getResponse().getContentAsString();
+
+            var branch = objectMapper.readTree(json).get(0);
+            String commit = branch.get("commit").asString();
+
+            // The tip must describe the commit the reference names, not merely
+            // some commit: a listing that pairs a branch with another branch's
+            // message would look perfectly plausible.
+            assertThat(branch.get("tip").get("sha").asString()).isEqualTo(commit);
+            assertThat(branch.get("tip").get("shortSha").asString()).isEqualTo(commit.substring(0, 7));
+        }
+
+        /**
+         * A branch name may contain slashes. It travels as a query parameter for
+         * exactly that reason, so the nested cases are worth pinning: they are
+         * the ones a path variable would have mangled.
+         */
+        @Test
+        void handlesBranchNamesContainingSlashes() throws Exception {
+            for (String branch : List.of("feature/login", "release/1.0", "bugfix/auth/token")) {
+                mockMvc.perform(post("/api/v1/repositories/octocat/demo/branches")
+                                .header("Authorization", bearer(token))
+                                .contentType("application/json")
+                                .content("""
+                                        {"name":"%s","startPoint":"main"}
+                                        """.formatted(branch)))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.name").value(branch))
+                        .andExpect(jsonPath("$.tip.message").value("Initial commit\n"));
+            }
+
+            mockMvc.perform(get("/api/v1/repositories/octocat/demo/branches"))
+                    .andExpect(jsonPath("$.length()").value(4))
+                    .andExpect(jsonPath("$[?(@.name == 'bugfix/auth/token')]").exists());
+
+            // Pointing HEAD at a nested name, and reading it back, is the round
+            // trip a slash would break if the name were ever put in a path.
+            mockMvc.perform(put("/api/v1/repositories/octocat/demo/head")
+                            .header("Authorization", bearer(token))
+                            .contentType("application/json")
+                            .content("""
+                                    {"branch":"bugfix/auth/token"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.branch").value("bugfix/auth/token"));
+
+            mockMvc.perform(delete("/api/v1/repositories/octocat/demo/branches")
+                            .param("name", "release/1.0")
+                            .header("Authorization", bearer(token)))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/v1/repositories/octocat/demo/branches"))
+                    .andExpect(jsonPath("$.length()").value(3));
         }
 
         @Test

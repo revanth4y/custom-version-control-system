@@ -20,7 +20,7 @@ import {
 const TABS = [
   { key: "code", label: "Code", icon: CodeIcon, path: "", ready: true },
   { key: "commits", label: "Commits", icon: GitCommitIcon, path: "commits", ready: false },
-  { key: "branches", label: "Branches", icon: GitBranchIcon, path: "branches", ready: false },
+  { key: "branches", label: "Branches", icon: GitBranchIcon, path: "branches", ready: true },
   { key: "issues", label: "Issues", icon: IssueOpenedIcon, path: "issues", ready: false },
   { key: "insights", label: "Insights", icon: GraphIcon, path: "insights", ready: false },
 ];
