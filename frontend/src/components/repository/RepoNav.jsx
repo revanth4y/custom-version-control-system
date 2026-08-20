@@ -36,7 +36,7 @@ const RepoNav = ({ owner, name }) => {
   // Sections that belong to a tab without being named after it: a single
   // commit and a comparison are both places you arrive at from the history, so
   // Commits stays lit rather than the tab falling back to Code.
-  const SECTION_TAB = { "": "code", tree: "code", blob: "code", commit: "commits", compare: "commits" };
+  const SECTION_TAB = { "": "code", tree: "code", blob: "code", commit: "commits", compare: "commits", merge: "branches" };
 
   const active =
     TABS.find((tab) => tab.path && tab.path === section)?.key ?? SECTION_TAB[section] ?? "code";
