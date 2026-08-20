@@ -1,9 +1,13 @@
 import { Navigate, useRoutes } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
+import BlobView from "../pages/BlobView";
+import CreateRepository from "../pages/CreateRepository";
 import Dashboard from "../pages/Dashboard";
 import DesignSystem from "../pages/DesignSystem";
 import Login from "../pages/Login";
+import RepositoryCode from "../pages/RepositoryCode";
+import RepositoryLayout from "../pages/RepositoryLayout";
 import Signup from "../pages/Signup";
 import { useAuth } from "../hooks/useAuth";
 
@@ -26,21 +30,37 @@ const RequireAnonymous = ({ children }) => {
 /**
  * Static paths are declared before the dynamic ones. React Router ranks static
  * segments higher regardless, but the ordering keeps the intent readable: no
- * username can shadow /login.
+ * username can shadow /login or /new.
+ *
+ * Refs and paths are splats because both may contain slashes — `feature/login`
+ * is a valid branch, and `src/main/App.java` is a valid path.
  */
 const AppRoutes = () =>
   useRoutes([
     { path: "/login", element: <RequireAnonymous><Login /></RequireAnonymous> },
     { path: "/signup", element: <RequireAnonymous><Signup /></RequireAnonymous> },
 
-    // Internal design reference, deliberately outside the shell's auth guard so
-    // the theme can be reviewed without signing in.
+    // Internal design reference, outside the auth guard so the theme can be
+    // reviewed without signing in.
     { path: "/_design", element: <DesignSystem /> },
 
     {
       path: "/",
       element: <RequireAuth><AppShell /></RequireAuth>,
-      children: [{ index: true, element: <Dashboard /> }],
+      children: [
+        { index: true, element: <Dashboard /> },
+        { path: "new", element: <CreateRepository /> },
+        {
+          path: ":username/:repo",
+          element: <RepositoryLayout />,
+          children: [
+            { index: true, element: <RepositoryCode /> },
+            { path: "tree/:ref/*", element: <RepositoryCode /> },
+            { path: "tree/:ref", element: <RepositoryCode /> },
+            { path: "blob/:ref/*", element: <BlobView /> },
+          ],
+        },
+      ],
     },
 
     { path: "*", element: <Navigate to="/" replace /> },

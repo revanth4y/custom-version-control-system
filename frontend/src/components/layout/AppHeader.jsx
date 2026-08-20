@@ -1,6 +1,6 @@
 import { Link as RouterLink } from "react-router-dom";
 import { Box, Text, ActionMenu, ActionList, Button } from "@primer/react";
-import { PlusIcon, SignOutIcon, PersonIcon } from "@primer/octicons-react";
+import { PlusIcon, SignOutIcon } from "@primer/octicons-react";
 
 import { useAuth } from "../../hooks/useAuth";
 import GitForgeMark from "../common/GitForgeMark";
@@ -91,12 +91,6 @@ const AppHeader = () => {
 
             <ActionMenu.Overlay align="end">
               <ActionList>
-                <ActionList.LinkItem as={RouterLink} to={`/${currentUser.username}`}>
-                  <ActionList.LeadingVisual>
-                    <PersonIcon />
-                  </ActionList.LeadingVisual>
-                  Your profile
-                </ActionList.LinkItem>
                 <ActionList.LinkItem as={RouterLink} to="/new">
                   <ActionList.LeadingVisual>
                     <PlusIcon />
