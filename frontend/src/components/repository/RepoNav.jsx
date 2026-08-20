@@ -33,10 +33,13 @@ const RepoNav = ({ owner, name }) => {
   const rest = location.pathname.slice(base.length).replace(/^\//, "");
   const section = rest.split("/")[0] ?? "";
 
-  // Code covers the repository root and every path beneath tree/ and blob/.
+  // Sections that belong to a tab without being named after it: a single
+  // commit and a comparison are both places you arrive at from the history, so
+  // Commits stays lit rather than the tab falling back to Code.
+  const SECTION_TAB = { "": "code", tree: "code", blob: "code", commit: "commits", compare: "commits" };
+
   const active =
-    TABS.find((tab) => tab.path && tab.path === section)?.key ??
-    (section === "" || section === "tree" || section === "blob" ? "code" : "code");
+    TABS.find((tab) => tab.path && tab.path === section)?.key ?? SECTION_TAB[section] ?? "code";
 
   return (
     <Box

@@ -22,6 +22,8 @@ public record FileDiffResponse(
         boolean tooLarge,
         int additions,
         int deletions,
+        int oldSize,
+        int newSize,
         List<HunkResponse> hunks) {
 
     public static FileDiffResponse from(FileDiff diff) {
@@ -36,6 +38,8 @@ public record FileDiffResponse(
                 diff.tooLarge(),
                 diff.additions(),
                 diff.deletions(),
+                diff.oldSize(),
+                diff.newSize(),
                 diff.hunks().stream().map(HunkResponse::from).toList());
     }
 }

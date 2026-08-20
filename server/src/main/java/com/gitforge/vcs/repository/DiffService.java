@@ -123,17 +123,17 @@ public final class DiffService {
             // Line numbers mean nothing in a binary file; report the change
             // without pretending it can be read as lines.
             return new FileDiff(path, status, oldBlob, newBlob, oldMode, newMode,
-                    true, false, List.of(), 0, 0);
+                    true, false, List.of(), 0, 0, oldContent.length, newContent.length);
         }
         if (!allowHunks) {
             return new FileDiff(path, status, oldBlob, newBlob, oldMode, newMode,
-                    false, true, List.of(), 0, 0);
+                    false, true, List.of(), 0, 0, oldContent.length, newContent.length);
         }
 
         Optional<List<Hunk>> hunks = LineDiffer.diff(oldText.get(), newText.get());
         if (hunks.isEmpty()) {
             return new FileDiff(path, status, oldBlob, newBlob, oldMode, newMode,
-                    false, true, List.of(), 0, 0);
+                    false, true, List.of(), 0, 0, oldContent.length, newContent.length);
         }
 
         int additions = 0;
@@ -150,6 +150,6 @@ public final class DiffService {
             }
         }
         return new FileDiff(path, status, oldBlob, newBlob, oldMode, newMode,
-                false, false, hunks.get(), additions, deletions);
+                false, false, hunks.get(), additions, deletions, oldContent.length, newContent.length);
     }
 }
