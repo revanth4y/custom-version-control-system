@@ -8,8 +8,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -24,6 +31,28 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public abstract class AbstractIntegrationTest {
+
+    /**
+     * Repository storage for the whole suite.
+     *
+     * <p>Created once because the Spring context — and therefore the repository
+     * factory holding this path — is cached across test classes. Its contents
+     * are cleared before each test instead.
+     */
+    protected static final Path STORAGE_ROOT = createStorageRoot();
+
+    @DynamicPropertySource
+    static void storageRoot(DynamicPropertyRegistry registry) {
+        registry.add("gitforge.storage.root", () -> STORAGE_ROOT.toString());
+    }
+
+    private static Path createStorageRoot() {
+        try {
+            return Files.createTempDirectory("gitforge-test-storage");
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not create test storage root", ex);
+        }
+    }
 
     @Autowired
     protected MockMvc mockMvc;
@@ -40,12 +69,32 @@ public abstract class AbstractIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
-    /** The container is shared across the suite, so each test starts from an empty schema. */
+    /**
+     * The container and storage directory are shared across the suite, so each
+     * test starts from an empty schema and empty repository storage.
+     */
     @BeforeEach
-    void resetDatabase() {
+    void resetState() {
         issueRepository.deleteAll();
         repoRepository.deleteAll();
         userRepository.deleteAll();
+        clearStorage();
+    }
+
+    private static void clearStorage() {
+        if (!Files.isDirectory(STORAGE_ROOT)) {
+            return;
+        }
+        try (var paths = Files.walk(STORAGE_ROOT)) {
+            // Deepest first, so directories are empty by the time they are removed.
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                if (!path.equals(STORAGE_ROOT)) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not clear test storage", ex);
+        }
     }
 
     protected String json(Object value) {

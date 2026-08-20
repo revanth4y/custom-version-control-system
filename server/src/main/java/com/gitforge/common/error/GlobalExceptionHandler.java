@@ -1,5 +1,8 @@
 package com.gitforge.common.error;
 
+import com.gitforge.vcs.object.CorruptObjectException;
+import com.gitforge.vcs.ref.RefException;
+import com.gitforge.vcs.storage.ObjectStoreException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,6 +60,48 @@ public class GlobalExceptionHandler {
 
         ApiError body = ApiError.of(403, "FORBIDDEN", "Access denied", request.getRequestURI());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    /**
+     * A reference was not in the state the caller assumed.
+     *
+     * <p>The API services resolve the common cases precisely — an absent branch
+     * as 404, a malformed name as 400 — so what reaches here is a genuine
+     * conflict with existing state.
+     */
+    @ExceptionHandler(RefException.class)
+    public ResponseEntity<ApiError> handleReference(RefException ex, HttpServletRequest request) {
+        ApiError body = ApiError.of(409, "CONFLICT", ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * A request the version-control engine refused as invalid.
+     *
+     * <p>These messages describe the caller's mistake — an unknown path, a path
+     * colliding with a directory — and are safe and useful to return.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleInvalidArgument(
+            IllegalArgumentException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(400, "BAD_REQUEST", ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * Stored data failed verification, or could not be read.
+     *
+     * <p>Reported as a server fault with the detail withheld: it says nothing the
+     * caller can act on, and describes internal storage.
+     */
+    @ExceptionHandler({CorruptObjectException.class, ObjectStoreException.class})
+    public ResponseEntity<ApiError> handleStorageFailure(RuntimeException ex, HttpServletRequest request) {
+        log.error("Object store failure for {} {}", request.getMethod(), request.getRequestURI(), ex);
+
+        ApiError body = ApiError.of(
+                500, "STORAGE_ERROR", "The repository could not be read", request.getRequestURI());
+        return ResponseEntity.internalServerError().body(body);
     }
 
     @ExceptionHandler(Exception.class)

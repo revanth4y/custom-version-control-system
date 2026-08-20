@@ -32,8 +32,13 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-gitforge_dev}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      VCS_STORAGE_ROOT: /var/lib/gitforge/storage
     ports:
       - "8080:8080"
+    volumes:
+      # Repository objects and refs: durable data, not part of the image.
+      - gitforge-storage:/var/lib/gitforge/storage
 
 volumes:
   gitforge-pgdata:
+  gitforge-storage:
