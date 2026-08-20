@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -43,6 +44,26 @@ public class GlobalExceptionHandler {
                 .toList();
 
         ApiError body = ApiError.validation("Request validation failed", request.getRequestURI(), fieldErrors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * The request body could not be read at all — malformed JSON, a wrong type,
+     * or bytes that are not valid UTF-8.
+     *
+     * <p>This is the caller's mistake, not a server fault. Without this it falls
+     * through to the catch-all and is reported as a 500, which both misleads the
+     * client and logs a stack trace for something the server handled correctly.
+     *
+     * <p>The parser's own message is not returned: it describes internal
+     * structure and can quote arbitrary request bytes back to the caller.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(
+                400, "MALFORMED_REQUEST", "Request body could not be read", request.getRequestURI());
         return ResponseEntity.badRequest().body(body);
     }
 
