@@ -1,0 +1,187 @@
+package com.gitforge.vcsapi;
+
+import com.gitforge.common.error.BadRequestException;
+import com.gitforge.common.error.NotFoundException;
+import com.gitforge.user.User;
+import com.gitforge.vcs.object.Commit;
+import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Signature;
+import com.gitforge.vcs.repository.FileChange;
+import com.gitforge.vcs.repository.VcsRepository;
+import com.gitforge.vcsapi.dto.CommitDetailResponse;
+import com.gitforge.vcsapi.dto.CommitRequest;
+import com.gitforge.vcsapi.dto.CommitSummaryResponse;
+import com.gitforge.vcsapi.dto.CompareResponse;
+import com.gitforge.vcsapi.dto.DiffResponse;
+import com.gitforge.vcsapi.dto.FileChangeRequest;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Recording and reading commits.
+ *
+ * <p>Commit identity comes from the engine's content addressing; nothing here
+ * constructs or hashes a commit itself.
+ */
+@Service
+public class CommitApiService {
+
+    private static final int MAX_HISTORY = 200;
+
+    /**
+     * Ten megabytes. Holds any source file, image or document someone commits
+     * through a web interface, and twenty times the largest object this engine
+     * has been asked to store.
+     */
+    static final int MAX_BLOB_BYTES = 10 * 1024 * 1024;
+
+    /**
+     * Twelve megabytes across one commit.
+     *
+     * <p>Set to what a sixteen-megabyte request body can actually deliver once
+     * base64 has taken its quarter, so the limit is reachable rather than
+     * shadowed by the transport cap and never exercised.
+     */
+    static final int MAX_COMMIT_BYTES = 12 * 1024 * 1024;
+
+    /**
+     * Five hundred paths in one commit.
+     *
+     * <p>Five times the hundred files the differ will render hunks for, so
+     * anything that commits successfully can still be reviewed. Beyond that it
+     * is an import, which this API does not offer.
+     */
+    static final int MAX_CHANGES = 500;
+
+    private final VcsRepositoryProvider repositories;
+
+    public CommitApiService(VcsRepositoryProvider repositories) {
+        this.repositories = repositories;
+    }
+
+    /**
+     * Records several file changes as one commit.
+     *
+     * <p>Everything is measured and decoded before the engine is touched. A
+     * request that is too large is refused having written no object and moved no
+     * reference - the alternative is discovering the limit halfway through, with
+     * some of the blobs already in the store.
+     */
+    public CommitSummaryResponse commit(String owner, String name, User viewer, CommitRequest request) {
+        if (request.changes().size() > MAX_CHANGES) {
+            throw new BadRequestException(
+                    "A commit may change at most %d files; this one changes %d"
+                            .formatted(MAX_CHANGES, request.changes().size()));
+        }
+
+        // Decoded once, measured, and only then turned into changes. Going
+        // through FileChange first would clone every array to read its length.
+        List<FileChange> changes = new ArrayList<>(request.changes().size());
+        long total = 0;
+
+        for (FileChangeRequest change : request.changes()) {
+            if (!"PUT".equals(change.operation())) {
+                changes.add(toFileChange(change, null));
+                continue;
+            }
+
+            byte[] content = ContentApiService.decode(change.content(), change.encoding());
+            if (content.length > MAX_BLOB_BYTES) {
+                throw new BadRequestException(
+                        "'%s' is %d bytes; a single file may be at most %d"
+                                .formatted(change.path(), content.length, MAX_BLOB_BYTES));
+            }
+            total += content.length;
+            if (total > MAX_COMMIT_BYTES) {
+                throw new BadRequestException(
+                        "A commit may carry at most %d bytes of content in total"
+                                .formatted(MAX_COMMIT_BYTES));
+            }
+            changes.add(toFileChange(change, content));
+        }
+
+        return commit(owner, name, viewer, request.branch(), request.message(), changes);
+    }
+
+    CommitSummaryResponse commit(
+            String owner, String name, User viewer, String branch, String message, List<FileChange> changes) {
+
+        VcsRepository repository = repositories.forWrite(owner, name, viewer);
+
+        ObjectId commitId;
+        try {
+            commitId = repository.commits().commit(branch, changes, signatureOf(viewer), message);
+        } catch (IllegalArgumentException ex) {
+            // Rejected change sets — an unknown path, a no-op commit, a path
+            // colliding with a directory — are the caller's mistake.
+            throw new BadRequestException(ex.getMessage());
+        }
+        return CommitSummaryResponse.from(repository.objects().readCommit(commitId));
+    }
+
+    public List<CommitSummaryResponse> history(String owner, String name, User viewer, String ref, Integer limit) {
+        VcsRepository repository = repositories.forRead(owner, name, viewer);
+
+        int bounded = Math.clamp(limit == null ? 30 : limit, 1, MAX_HISTORY);
+        return repository.reader().history(revisionOrHead(ref), bounded).stream()
+                .map(CommitSummaryResponse::from)
+                .toList();
+    }
+
+    public CommitDetailResponse detail(String owner, String name, User viewer, String sha) {
+        VcsRepository repository = repositories.forRead(owner, name, viewer);
+
+        ObjectId commitId = parseObjectId(sha);
+        Commit commit = repository.reader().commit(commitId)
+                .orElseThrow(() -> new NotFoundException("No such commit: " + sha));
+
+        return new CommitDetailResponse(
+                CommitSummaryResponse.from(commit),
+                DiffResponse.from(repository.reader().changesIn(commitId)));
+    }
+
+    public CompareResponse compare(String owner, String name, User viewer, String base, String head) {
+        VcsRepository repository = repositories.forRead(owner, name, viewer);
+
+        if (base == null || base.isBlank() || head == null || head.isBlank()) {
+            throw new BadRequestException("Both base and head revisions are required");
+        }
+        return repository.reader().compare(base, head)
+                .map(diff -> new CompareResponse(base, head, DiffResponse.from(diff)))
+                .orElseThrow(() -> new NotFoundException("Cannot resolve one of the revisions to compare"));
+    }
+
+    /** @param decoded the already-decoded content for a PUT, null for a DELETE */
+    private static FileChange toFileChange(FileChangeRequest request, byte[] decoded) {
+        return switch (request.operation()) {
+            case "PUT" -> FileChange.put(request.path(), decoded, ContentApiService.modeOf(request.mode()));
+            case "DELETE" -> FileChange.delete(request.path());
+            default -> throw new BadRequestException("Unsupported operation: " + request.operation());
+        };
+    }
+
+    /** Commits are attributed to the authenticated caller, never to request data. */
+    private Signature signatureOf(User viewer) {
+        return Signature.of(
+                viewer.getDisplayName() == null || viewer.getDisplayName().isBlank()
+                        ? viewer.getUsername()
+                        : viewer.getDisplayName(),
+                viewer.getEmail(),
+                Instant.now());
+    }
+
+    private static ObjectId parseObjectId(String sha) {
+        try {
+            return ObjectId.fromHex(sha);
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Not a valid commit id: " + sha);
+        }
+    }
+
+    private static String revisionOrHead(String ref) {
+        return ref == null || ref.isBlank() ? "HEAD" : ref;
+    }
+}

@@ -7,7 +7,7 @@ package com.gitforge.vcs.object;
  * When commits join this hierarchy, sites that need updating become compile
  * errors rather than runtime surprises.
  */
-public sealed interface VcsObject permits Blob, Tree {
+public sealed interface VcsObject permits Blob, Tree, Commit {
 
     ObjectType type();
 

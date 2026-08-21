@@ -13,7 +13,8 @@ import java.util.Arrays;
 public enum ObjectType {
 
     BLOB("blob"),
-    TREE("tree");
+    TREE("tree"),
+    COMMIT("commit");
 
     private final String header;
 
