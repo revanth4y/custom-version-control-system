@@ -61,7 +61,10 @@ public class SecurityConfig {
                         // service layer still hides private repositories.
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/repositories/**").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        // Polled by the container runtime, which holds no
+                        // credentials. It reports only whether the database and
+                        // storage answered.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/health").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, ex) ->

@@ -196,8 +196,13 @@ const Activity = ({ activity }) => {
               key={day.date}
               title={`${day.count} ${day.count === 1 ? "commit" : "commits"} on ${day.date}`}
               sx={{
-                width: "14px",
-                flexShrink: 0,
+                // Grows to share the width when there are few days, so a young
+                // repository does not draw a thumbnail chart in the corner of a
+                // wide card; capped so a single day is a bar and not a slab.
+                // Many days hit the 14px basis instead and the row scrolls.
+                flex: "1 1 14px",
+                minWidth: "14px",
+                maxWidth: "48px",
                 // A day with commits is never invisible, however small its share.
                 height: `${Math.max((day.count / max) * 100, 6)}%`,
                 borderRadius: 1,
@@ -217,7 +222,10 @@ const Activity = ({ activity }) => {
             <Text as="span" title={formatAbsoluteTime(first.date)}>{first.date}</Text>
             {" to "}
             <Text as="span" title={formatAbsoluteTime(last.date)}>{last.date}</Text>
-            {" · only days with commits are shown"}
+            {" · only days with commits are shown · "}
+            {/* Without this a chart where every day scored the same is a row of
+                equal bars with nothing to read them against. */}
+            {`busiest day ${max} ${max === 1 ? "commit" : "commits"}`}
           </>
         )}
       </Text>

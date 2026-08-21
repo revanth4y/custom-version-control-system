@@ -33,10 +33,10 @@ const apiOrigin = (base) => {
  * `script-src` deliberately has no 'unsafe-inline'. The production build emits
  * one external module script and no inline script, so it does not need it.
  *
- * `frame-ancestors` is listed but has no effect in a meta tag - only a real
- * header can carry it. The API already sends X-Frame-Options: DENY, and a
- * deployment should send this same policy as a header from whatever serves the
- * document.
+ * `frame-ancestors` is deliberately absent. A meta tag cannot carry it - the
+ * browser ignores it and logs an error on every page load - so the production
+ * nginx configuration sends the policy as a real header, frame-ancestors
+ * included. What remains here is the floor for anyone serving `dist` directly.
  */
 const contentSecurityPolicy = (connect) =>
   [
@@ -49,7 +49,6 @@ const contentSecurityPolicy = (connect) =>
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
   ].join("; ");
 
 const cspPlugin = (env) => ({
