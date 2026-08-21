@@ -1,0 +1,28 @@
+# Development-only overlay that rebuilds the demonstration dataset.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --force-recreate server
+#
+# DESTRUCTIVE. On startup the server deletes every account, repository, issue,
+# comment and stored object, then rebuilds the canonical demo dataset. There is
+# no confirmation and nothing is recoverable afterwards.
+#
+# Deliberately a separate file: the production compose sets neither of the two
+# gates, so no combination of environment variables alone can arm this.
+#
+# Afterwards, put the server back on the ordinary configuration:
+#
+#   docker compose up -d --force-recreate server
+#
+# The settings below live on the container this creates, so until it is replaced
+# every restart of it - `docker compose restart` included - reseeds again.
+services:
+  server:
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      DEMO_RESET: "true"
+      # Every seeded account shares this password.
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-gitforge-demo-2026}
+      # Unset means "dated from now", so the contribution calendar looks alive.
+      # Pin it - DEMO_EPOCH=2026-01-01T00:00:00Z - and the dataset is
+      # reproducible byte for byte, object ids included.
+      DEMO_EPOCH: ${DEMO_EPOCH:-}
