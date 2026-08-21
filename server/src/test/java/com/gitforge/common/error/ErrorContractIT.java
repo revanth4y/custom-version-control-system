@@ -124,4 +124,71 @@ class ErrorContractIT extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
     }
+
+    /**
+     * A comparison link with a parameter dropped is a truncated URL, not a
+     * broken server. These reached the catch-all and were answered 500.
+     */
+    @Test
+    void aMissingRequiredQueryParameterIsBadRequest() throws Exception {
+        seedRepository("octocat");
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/diff").param("head", "main"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                // Naming the parameter is what lets the caller repair the URL.
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("base")));
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/diff").param("base", "main"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("head")));
+    }
+
+    @Test
+    void aBlobRequestWithoutAPathIsBadRequest() throws Exception {
+        seedRepository("hubot");
+
+        mockMvc.perform(get("/api/v1/repositories/hubot/demo/blob").param("ref", "main"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("path")));
+    }
+
+    /**
+     * The parameters that are genuinely optional must stay optional; a handler
+     * that turned every absent parameter into a 400 would break these.
+     */
+    @Test
+    void omittingAnOptionalParameterIsStillFine() throws Exception {
+        seedRepository("monalisa");
+
+        mockMvc.perform(get("/api/v1/repositories/monalisa/demo/tree"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/repositories/monalisa/demo/commits"))
+                .andExpect(status().isOk());
+    }
+
+    /** A public repository with one commit on main, so reads have something to find. */
+    private void seedRepository(String username) throws Exception {
+        String token = registerAndLogin(username);
+
+        mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("""
+                                {"name":"demo","description":"a repo","visibility":"PUBLIC"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/repositories/%s/demo/commits".formatted(username))
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("""
+                                {"branch":"main","message":"Initial commit","changes":[
+                                  {"operation":"PUT","path":"README.md","content":"hello"}
+                                ]}
+                                """))
+                .andExpect(status().isCreated());
+    }
 }

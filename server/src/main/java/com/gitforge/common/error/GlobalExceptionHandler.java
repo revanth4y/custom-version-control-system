@@ -17,6 +17,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -37,6 +38,20 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * Throttled. Carries {@code Retry-After} so a well-behaved client knows when
+     * to come back rather than hammering until it happens to be let through.
+     */
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ApiError> handleTooManyRequests(
+            TooManyRequestsException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(429, ex.getCode(), ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(Math.max(1, ex.getRetryAfter().toSeconds())))
+                .body(body);
+    }
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApiException(ApiException ex, HttpServletRequest request) {
@@ -223,6 +238,28 @@ public class GlobalExceptionHandler {
         }
 
         ApiError body = ApiError.of(400, "BAD_REQUEST", detail, request.getRequestURI());
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * A required query parameter was not sent at all.
+     *
+     * <p>The neighbouring case: there the value could not be converted, here
+     * there was no value. Spring raises this before the handler runs, and
+     * without a mapping it reached the catch-all and became a 500 - telling the
+     * caller the server broke when the request was simply incomplete. A
+     * truncated compare link is the ordinary way to arrive here, so the response
+     * names the parameter, which is the whole of what the caller needs to fix.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(
+                400,
+                "BAD_REQUEST",
+                "Required parameter '%s' is missing".formatted(ex.getParameterName()),
+                request.getRequestURI());
         return ResponseEntity.badRequest().body(body);
     }
 

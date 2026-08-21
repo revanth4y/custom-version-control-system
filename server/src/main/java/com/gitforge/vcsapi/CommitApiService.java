@@ -17,6 +17,7 @@ import com.gitforge.vcsapi.dto.FileChangeRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,17 +31,77 @@ public class CommitApiService {
 
     private static final int MAX_HISTORY = 200;
 
+    /**
+     * Ten megabytes. Holds any source file, image or document someone commits
+     * through a web interface, and twenty times the largest object this engine
+     * has been asked to store.
+     */
+    static final int MAX_BLOB_BYTES = 10 * 1024 * 1024;
+
+    /**
+     * Twelve megabytes across one commit.
+     *
+     * <p>Set to what a sixteen-megabyte request body can actually deliver once
+     * base64 has taken its quarter, so the limit is reachable rather than
+     * shadowed by the transport cap and never exercised.
+     */
+    static final int MAX_COMMIT_BYTES = 12 * 1024 * 1024;
+
+    /**
+     * Five hundred paths in one commit.
+     *
+     * <p>Five times the hundred files the differ will render hunks for, so
+     * anything that commits successfully can still be reviewed. Beyond that it
+     * is an import, which this API does not offer.
+     */
+    static final int MAX_CHANGES = 500;
+
     private final VcsRepositoryProvider repositories;
 
     public CommitApiService(VcsRepositoryProvider repositories) {
         this.repositories = repositories;
     }
 
-    /** Records several file changes as one commit. */
+    /**
+     * Records several file changes as one commit.
+     *
+     * <p>Everything is measured and decoded before the engine is touched. A
+     * request that is too large is refused having written no object and moved no
+     * reference - the alternative is discovering the limit halfway through, with
+     * some of the blobs already in the store.
+     */
     public CommitSummaryResponse commit(String owner, String name, User viewer, CommitRequest request) {
-        List<FileChange> changes = request.changes().stream()
-                .map(CommitApiService::toFileChange)
-                .toList();
+        if (request.changes().size() > MAX_CHANGES) {
+            throw new BadRequestException(
+                    "A commit may change at most %d files; this one changes %d"
+                            .formatted(MAX_CHANGES, request.changes().size()));
+        }
+
+        // Decoded once, measured, and only then turned into changes. Going
+        // through FileChange first would clone every array to read its length.
+        List<FileChange> changes = new ArrayList<>(request.changes().size());
+        long total = 0;
+
+        for (FileChangeRequest change : request.changes()) {
+            if (!"PUT".equals(change.operation())) {
+                changes.add(toFileChange(change, null));
+                continue;
+            }
+
+            byte[] content = ContentApiService.decode(change.content(), change.encoding());
+            if (content.length > MAX_BLOB_BYTES) {
+                throw new BadRequestException(
+                        "'%s' is %d bytes; a single file may be at most %d"
+                                .formatted(change.path(), content.length, MAX_BLOB_BYTES));
+            }
+            total += content.length;
+            if (total > MAX_COMMIT_BYTES) {
+                throw new BadRequestException(
+                        "A commit may carry at most %d bytes of content in total"
+                                .formatted(MAX_COMMIT_BYTES));
+            }
+            changes.add(toFileChange(change, content));
+        }
 
         return commit(owner, name, viewer, request.branch(), request.message(), changes);
     }
@@ -93,12 +154,10 @@ public class CommitApiService {
                 .orElseThrow(() -> new NotFoundException("Cannot resolve one of the revisions to compare"));
     }
 
-    private static FileChange toFileChange(FileChangeRequest request) {
+    /** @param decoded the already-decoded content for a PUT, null for a DELETE */
+    private static FileChange toFileChange(FileChangeRequest request, byte[] decoded) {
         return switch (request.operation()) {
-            case "PUT" -> FileChange.put(
-                    request.path(),
-                    ContentApiService.decode(request.content(), request.encoding()),
-                    ContentApiService.modeOf(request.mode()));
+            case "PUT" -> FileChange.put(request.path(), decoded, ContentApiService.modeOf(request.mode()));
             case "DELETE" -> FileChange.delete(request.path());
             default -> throw new BadRequestException("Unsupported operation: " + request.operation());
         };
