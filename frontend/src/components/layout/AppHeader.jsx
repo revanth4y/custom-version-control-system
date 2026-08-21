@@ -1,6 +1,6 @@
 import { Link as RouterLink } from "react-router-dom";
 import { Box, Text, ActionMenu, ActionList, Button } from "@primer/react";
-import { PlusIcon, SignOutIcon } from "@primer/octicons-react";
+import { PersonIcon, PlusIcon, SignOutIcon } from "@primer/octicons-react";
 
 import { useAuth } from "../../hooks/useAuth";
 import GitForgeMark from "../common/GitForgeMark";
@@ -51,6 +51,20 @@ const AppHeader = () => {
         <Text sx={{ fontWeight: 600, fontSize: 2, letterSpacing: "-0.01em" }}>GitForge</Text>
       </Box>
 
+      {/* Signed out, the header offers the way in rather than nothing: a
+          public repository is readable without an account, so an anonymous
+          visitor is an ordinary visitor, not a lost one. */}
+      {!currentUser && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Button as={RouterLink} to="/login" size="small">
+            Sign in
+          </Button>
+          <Button as={RouterLink} to="/signup" size="small" variant="primary" sx={{ display: ["none", "inline-flex"] }}>
+            Create an account
+          </Button>
+        </Box>
+      )}
+
       {currentUser && (
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Button
@@ -91,6 +105,12 @@ const AppHeader = () => {
 
             <ActionMenu.Overlay align="end">
               <ActionList>
+                <ActionList.LinkItem as={RouterLink} to={`/${currentUser.username}`}>
+                  <ActionList.LeadingVisual>
+                    <PersonIcon />
+                  </ActionList.LeadingVisual>
+                  Your profile
+                </ActionList.LinkItem>
                 <ActionList.LinkItem as={RouterLink} to="/new">
                   <ActionList.LeadingVisual>
                     <PlusIcon />

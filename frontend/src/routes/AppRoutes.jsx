@@ -1,25 +1,60 @@
+import { lazy } from "react";
 import { Navigate, useRoutes } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
-import BlobView from "../pages/BlobView";
-import BranchList from "../pages/BranchList";
-import CommitDetail from "../pages/CommitDetail";
-import CommitHistory from "../pages/CommitHistory";
-import Compare from "../pages/Compare";
-import IssueDetailPage from "../pages/IssueDetailPage";
-import MergePage from "../pages/MergePage";
-import NewIssue from "../pages/NewIssue";
-import RepositoryIssues from "../pages/RepositoryIssues";
-import CreateRepository from "../pages/CreateRepository";
-import Dashboard from "../pages/Dashboard";
-import DesignSystem from "../pages/DesignSystem";
-import Login from "../pages/Login";
-import RepositoryCode from "../pages/RepositoryCode";
 import RepositoryLayout from "../pages/RepositoryLayout";
-import Signup from "../pages/Signup";
 import { useAuth } from "../hooks/useAuth";
 
-/** Renders children only for signed-in users; anonymous callers go to the login page. */
+/**
+ * Pages are loaded on demand.
+ *
+ * Every page used to be in the first download, so a visitor reading one public
+ * file also fetched the merge screen, the diff viewer and the design reference.
+ * Splitting by route means the initial load carries the shell and the page
+ * actually asked for.
+ *
+ * The shell and the repository frame stay eager: they render on essentially
+ * every route, so deferring them would only add a request before anything can
+ * appear.
+ */
+const BlobView = lazy(() => import("../pages/BlobView"));
+const BranchList = lazy(() => import("../pages/BranchList"));
+const CommitDetail = lazy(() => import("../pages/CommitDetail"));
+const CommitHistory = lazy(() => import("../pages/CommitHistory"));
+const Compare = lazy(() => import("../pages/Compare"));
+const CreateRepository = lazy(() => import("../pages/CreateRepository"));
+const Dashboard = lazy(() => import("../pages/Dashboard"));
+const Insights = lazy(() => import("../pages/Insights"));
+const IssueDetailPage = lazy(() => import("../pages/IssueDetailPage"));
+const Login = lazy(() => import("../pages/Login"));
+const MergePage = lazy(() => import("../pages/MergePage"));
+const NewIssue = lazy(() => import("../pages/NewIssue"));
+const RepositoryCode = lazy(() => import("../pages/RepositoryCode"));
+const RepositoryIssues = lazy(() => import("../pages/RepositoryIssues"));
+const Signup = lazy(() => import("../pages/Signup"));
+const UserProfile = lazy(() => import("../pages/UserProfile"));
+
+/**
+ * The design reference, in development only.
+ *
+ * It is a tool for building this interface, not part of it, and it used to be
+ * shipped to every visitor. `import.meta.env.DEV` is statically replaced at
+ * build time, so the whole branch - and the page behind it - is removed from
+ * the production bundle rather than merely being unreachable in it.
+ */
+const DesignSystem = import.meta.env.DEV ? lazy(() => import("../pages/DesignSystem")) : null;
+
+/**
+ * Guards a route that genuinely needs an identity.
+ *
+ * Reading a public repository does not: the server serves it to anyone, and
+ * wrapping it here would contradict what `visibility: PUBLIC` means. This is
+ * for the things that are actually someone's own - their dashboard, creating a
+ * repository, filing an issue.
+ *
+ * It is a courtesy in any case. The server authorises every write regardless of
+ * what the interface chose to render.
+ */
 const RequireAuth = ({ children }) => {
   const { currentUser, loading } = useAuth();
 
@@ -48,16 +83,19 @@ const AppRoutes = () =>
     { path: "/login", element: <RequireAnonymous><Login /></RequireAnonymous> },
     { path: "/signup", element: <RequireAnonymous><Signup /></RequireAnonymous> },
 
-    // Internal design reference, outside the auth guard so the theme can be
-    // reviewed without signing in.
-    { path: "/_design", element: <DesignSystem /> },
+    ...(DesignSystem ? [{ path: "/_design", element: <DesignSystem /> }] : []),
 
     {
       path: "/",
-      element: <RequireAuth><AppShell /></RequireAuth>,
+      element: <AppShell />,
       children: [
-        { index: true, element: <Dashboard /> },
-        { path: "new", element: <CreateRepository /> },
+        // A dashboard is by definition someone's own.
+        { index: true, element: <RequireAuth><Dashboard /></RequireAuth> },
+        { path: "new", element: <RequireAuth><CreateRepository /></RequireAuth> },
+
+        // Public: the server serves these to anonymous callers, and refuses
+        // anything private with a 404 that hides its existence.
+        { path: ":username", element: <UserProfile /> },
         {
           path: ":username/:repo",
           element: <RepositoryLayout />,
@@ -71,11 +109,14 @@ const AppRoutes = () =>
             { path: "commits/:ref", element: <CommitHistory /> },
             { path: "commit/:sha", element: <CommitDetail /> },
             { path: "compare", element: <Compare /> },
+            { path: "insights", element: <Insights /> },
+            // Read-only for anyone; the merge control itself is the owner's,
+            // and the server refuses the write regardless.
             { path: "merge", element: <MergePage /> },
             { path: "issues", element: <RepositoryIssues /> },
             // Declared before the number so "new" is never read as one; React
             // Router ranks static segments higher regardless.
-            { path: "issues/new", element: <NewIssue /> },
+            { path: "issues/new", element: <RequireAuth><NewIssue /></RequireAuth> },
             { path: "issues/:number", element: <IssueDetailPage /> },
           ],
         },

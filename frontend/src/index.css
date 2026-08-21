@@ -27,3 +27,18 @@ body {
 * {
   scrollbar-color: #2d323d #14161c;
 }
+
+/*
+ * Focus must be visible.
+ *
+ * Links and the custom controls built on Box render no focus ring of their own,
+ * so a keyboard user had no way to tell where they were - the nav tabs, the
+ * repository header links and the account button were all silent. `:focus-visible`
+ * shows the ring for keyboard interaction without drawing it on every mouse
+ * click.
+ */
+:where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid #E0763D;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

@@ -33,10 +33,18 @@ const Markdown = ({ children }) => (
   </Box>
 );
 
+/**
+ * A heading inside user-written content.
+ *
+ * Rendered one level below what the Markdown says: a README beginning with `#`
+ * would otherwise emit a second `<h1>` on a page whose own title is already
+ * the first, leaving the document with two competing top-level headings. The
+ * visual size is kept, so only the outline changes.
+ */
 const heading = (level, fontSize, rule) => {
   const Component = ({ children }) => (
     <Heading
-      as={`h${level}`}
+      as={`h${Math.min(level + 1, 6)}`}
       sx={{
         fontSize,
         fontWeight: 600,
