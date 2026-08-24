@@ -11,6 +11,13 @@ import GitForgeMark from "./GitForgeMark";
  * with different proportions therefore cannot change the height of the header
  * or shift what sits beside it: the mark scales to the frame, the frame does
  * not scale to the mark.
+ *
+ * The colour is set here rather than inherited. The brand green is one value in
+ * both themes, while the surrounding text accent is not — light mode darkens it
+ * to #15803D so that links can be read, and a mark that inherited that would
+ * quietly stop being the brand colour on half the site. Named as the accent
+ * emphasis token rather than written as a hex, so it still moves with the theme
+ * if the brand ever changes.
  */
 const BrandMark = ({ size = 22, title, ...rest }) => (
   <span
@@ -22,6 +29,7 @@ const BrandMark = ({ size = 22, title, ...rest }) => (
       height: size,
       flexShrink: 0,
       lineHeight: 0,
+      color: "var(--bgColor-accent-emphasis)",
     }}
     {...rest}
   >
