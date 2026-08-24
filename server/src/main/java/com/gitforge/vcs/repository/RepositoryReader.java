@@ -12,7 +12,6 @@ import com.gitforge.vcs.storage.ObjectStore;
 import com.gitforge.vcs.tree.TreeWalker;
 
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -161,10 +160,17 @@ public final class RepositoryReader {
      * caller is expected to render that as unknown. Without a bound this would
      * walk the entire history for every directory listing.
      *
-     * <p>Commits are examined newest first, by author timestamp, so the first
-     * one seen to touch a path is the answer and the walk can stop as soon as
-     * every path is accounted for. Ties are broken by object id so the result is
-     * deterministic when two commits share a timestamp.
+     * <p>Commits are examined in the order {@link #history(String, int)} returns
+     * them - nearest the tip first - so the first one seen to touch a path is
+     * the answer and the walk can stop as soon as every path is accounted for.
+     * That is deliberately the same order the history listing shows, so the
+     * commit named against a file here is the one a reader will find at the top
+     * of that file's history.
+     *
+     * <p>Sorting by timestamp instead would be wrong: signatures are stored to
+     * one-second resolution, following Git, so two commits made in the same
+     * second are indistinguishable by time and the tie-break decides
+     * attribution arbitrarily. Graph order has no such ambiguity.
      *
      * <p>Attribution uses {@link #changesIn(ObjectId)}, so a merge is credited
      * with everything it brought in relative to its first parent. That matches
@@ -192,7 +198,7 @@ public final class RepositoryReader {
 
         Map<String, Commit> resolved = new HashMap<>();
 
-        for (Commit commit : newestFirst(history(revision, limit))) {
+        for (Commit commit : history(revision, limit)) {
             for (String changed : changedPaths(commit)) {
                 // Copied because a hit removes from the set being iterated.
                 for (String candidate : List.copyOf(unresolved)) {
@@ -217,14 +223,6 @@ public final class RepositoryReader {
     /** A path is touched by a change to itself, or to anything beneath it. */
     private static boolean touches(String changedPath, String candidate) {
         return changedPath.equals(candidate) || changedPath.startsWith(candidate + "/");
-    }
-
-    private static List<Commit> newestFirst(List<Commit> commits) {
-        return commits.stream()
-                .sorted(Comparator.comparing((Commit commit) -> commit.author().timestamp())
-                        .reversed()
-                        .thenComparing(commit -> commit.id().toHex()))
-                .toList();
     }
 
     /** Compares the trees of two revisions. */

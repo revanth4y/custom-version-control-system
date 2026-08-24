@@ -35,9 +35,10 @@ public class ContentController {
             @PathVariable String name,
             @RequestParam(required = false) String ref,
             @RequestParam(required = false) String path,
+            @RequestParam(required = false, defaultValue = "false") boolean withLastCommit,
             @AuthenticationPrincipal AuthenticatedUser principal) {
 
-        return contents.listDirectory(owner, name, viewerOf(principal), ref, path);
+        return contents.listDirectory(owner, name, viewerOf(principal), ref, path, withLastCommit);
     }
 
     @GetMapping("/blob")
