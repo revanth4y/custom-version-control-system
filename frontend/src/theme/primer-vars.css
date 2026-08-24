@@ -1,9 +1,9 @@
 /*
  * GitForge colours as Primer CSS custom properties.
  *
- * Primer v36 is themed two different ways, and both have to be covered.
- * Most components read the styled-components theme object, which
- * `theme/gitforge.js` supplies. But a number of them instead emit
+ * Primer v36 is themed two different ways, and both have to be covered. Most
+ * components read the styled-components theme object, which `theme/gitforge.js`
+ * supplies. But a number of them instead emit
  *
  *     background-color: var(--underlineNav-borderColor-active, #fd8c73);
  *
@@ -13,119 +13,202 @@
  * GitHub's palette no matter what the theme object says. The active tab
  * underline was doing exactly that.
  *
+ * Both schemes are defined here. `:root` carries light; `[data-theme="dark"]`
+ * overrides it, and the media query covers the moment before React has run and
+ * set the attribute — otherwise someone whose system is dark sees a white flash
+ * on every load.
+ *
  * Only the variables that carry colour identity are defined. The rest of
  * Primer's ~180 variables control spacing and sizing, where its defaults are
  * fine and overriding them would be churn.
  */
 
-:root {
+:root,
+[data-theme="light"] {
   /* ---- Surfaces ---- */
-  --bgColor-default: #14161c;
-  --bgColor-muted: #1b1e26;
-  --bgColor-inset: #101218;
-  --bgColor-emphasis: #6e7784;
-  --bgColor-neutral-muted: rgba(110, 119, 132, 0.24);
-  --bgColor-neutral-emphasis: #6e7784;
-  --overlay-bgColor: #22262f;
-  --overlay-backdrop-bgColor: rgba(10, 12, 16, 0.6);
+  --bgColor-default: #f9fafb;
+  --bgColor-muted: #ffffff;
+  --bgColor-inset: #f3f4f6;
+  --bgColor-emphasis: #6b7280;
+  --bgColor-neutral-muted: rgba(107, 114, 128, 0.12);
+  --bgColor-neutral-emphasis: #6b7280;
+  --overlay-bgColor: #ffffff;
+  --overlay-backdrop-bgColor: rgba(17, 24, 39, 0.4);
 
   /* ---- Text ---- */
-  --fgColor-default: #e4e7ec;
-  --fgColor-muted: #9aa3b2;
-  --fgColor-disabled: rgba(110, 119, 132, 0.68);
+  --fgColor-default: #111827;
+  --fgColor-muted: #6b7280;
+  --fgColor-disabled: rgba(107, 114, 128, 0.6);
   --fgColor-onEmphasis: #ffffff;
-  --fgColor-link: #f08e5a;
+  --fgColor-link: #15803d;
 
   /* ---- Borders ---- */
-  --borderColor-default: #2d323d;
-  --borderColor-muted: #242832;
+  --borderColor-default: #e5e7eb;
+  --borderColor-muted: #f0f1f3;
   --borderColor-transparent: transparent;
 
   /*
-   * Form controls carry a brighter border than layout borders. A divider only
-   * has to separate two areas, but an input has to look like something you can
-   * type into, and at #2d323d against the raised surface it did not read as an
-   * editable field.
+   * Form controls carry a stronger border than layout borders. A divider only
+   * has to separate two areas; an input has to be findable, which WCAG puts at
+   * 3:1. #e5e7eb measures 1.24:1 against white and fails that outright.
    */
-  --control-borderColor-rest: #3a4150;
-  --control-borderColor-emphasis: #4a5261;
-  --control-borderColor-disabled: #262b34;
-  --control-bgColor-rest: #14161c;
-  --control-bgColor-disabled: #1b1e26;
+  --control-borderColor-rest: #6b7280;
+  --control-borderColor-emphasis: #4b5563;
+  --control-borderColor-disabled: #e5e7eb;
+  --control-bgColor-rest: #ffffff;
+  --control-bgColor-disabled: #f3f4f6;
 
-  /* ---- Ember accent ---- */
-  --fgColor-accent: #f08e5a;
+  /* ---- Accent ---- *
+   * Text uses the darker step; fills use the brand green. #22c55e measures
+   * 2.18:1 on this canvas and cannot carry text. */
+  --fgColor-accent: #15803d;
   /* Primer ships this typo'd variable name; some components read it. */
-  --fgColor-acccent: #f08e5a;
-  --bgColor-accent-emphasis: #e0763d;
-  --bgColor-accent-muted: rgba(224, 118, 61, 0.14);
-  --borderColor-accent-muted: rgba(224, 118, 61, 0.4);
-  --borderColor-accent-emphasis: #e0763d;
-
-  /* The active tab indicator, which is what exposed this whole problem. */
-  --underlineNav-borderColor-active: #e0763d;
-  --underlineNav-borderColor-hover: rgba(154, 163, 178, 0.4);
-  --underlineNav-iconColor-rest: #9aa3b2;
+  --fgColor-acccent: #15803d;
+  --bgColor-accent-emphasis: #22c55e;
+  --bgColor-accent-muted: rgba(34, 197, 94, 0.12);
+  --borderColor-accent-muted: rgba(34, 197, 94, 0.4);
+  --borderColor-accent-emphasis: #22c55e;
+  --underlineNav-borderColor-active: #22c55e;
+  --underlineNav-borderColor-hover: rgba(107, 114, 128, 0.4);
+  --underlineNav-iconColor-rest: #6b7280;
 
   /* ---- Success ---- */
-  --fgColor-success: #4f9d69;
-  --bgColor-success-emphasis: #4f9d69;
-  --bgColor-success-muted: rgba(79, 157, 105, 0.14);
-  --borderColor-success-muted: rgba(79, 157, 105, 0.4);
+  --fgColor-success: #15803d;
+  --bgColor-success-emphasis: #22c55e;
+  --bgColor-success-muted: rgba(21, 128, 61, 0.12);
+  --borderColor-success-muted: rgba(21, 128, 61, 0.4);
 
   /* ---- Danger ---- */
-  --fgColor-danger: #d9534f;
-  --bgColor-danger-emphasis: #d9534f;
-  --bgColor-danger-muted: rgba(217, 83, 79, 0.14);
-  --borderColor-danger-muted: rgba(217, 83, 79, 0.4);
-  --borderColor-danger-emphasis: #d9534f;
+  --fgColor-danger: #dc2626;
+  --bgColor-danger-emphasis: #dc2626;
+  --bgColor-danger-muted: rgba(220, 38, 38, 0.12);
+  --borderColor-danger-muted: rgba(220, 38, 38, 0.4);
+  --borderColor-danger-emphasis: #dc2626;
 
   /* ---- Attention ---- */
-  --fgColor-attention: #d8a33c;
-  --bgColor-attention-emphasis: #d8a33c;
-  --bgColor-attention-muted: rgba(216, 163, 60, 0.14);
-  --borderColor-attention-muted: rgba(216, 163, 60, 0.4);
+  --fgColor-attention: #b45309;
+  --bgColor-attention-emphasis: #b45309;
+  --bgColor-attention-muted: rgba(180, 83, 9, 0.12);
+  --borderColor-attention-muted: rgba(180, 83, 9, 0.4);
+
+  /* ---- Accent (informational) ---- */
+  --fgColor-info: #2563eb;
 
   /*
    * ---- Issue and pull-request states ----
    *
-   * Primer names these by meaning rather than colour. They are mapped onto the
-   * GitForge palette so an "open" badge cannot arrive in GitHub green while
-   * everything around it is ember.
+   * Primer names these by meaning rather than colour, so they are mapped onto
+   * the GitForge palette. Otherwise an "open" badge arrives in GitHub green
+   * while everything around it is ours.
    */
-  --fgColor-open: #4f9d69;
-  --bgColor-open-emphasis: #4f9d69;
-  --bgColor-open-muted: rgba(79, 157, 105, 0.14);
-  --borderColor-open-emphasis: #4f9d69;
-  --borderColor-open-muted: rgba(79, 157, 105, 0.4);
+  --fgColor-open: #15803d;
+  --bgColor-open-emphasis: #22c55e;
+  --bgColor-open-muted: rgba(21, 128, 61, 0.12);
+  --borderColor-open-emphasis: #22c55e;
+  --borderColor-open-muted: rgba(21, 128, 61, 0.4);
+  --fgColor-closed: #dc2626;
+  --bgColor-closed-emphasis: #dc2626;
+  --bgColor-closed-muted: rgba(220, 38, 38, 0.12);
+  --borderColor-closed-emphasis: #dc2626;
+}
 
-  --fgColor-closed: #d9534f;
-  --bgColor-closed-emphasis: #d9534f;
-  --bgColor-closed-muted: rgba(217, 83, 79, 0.14);
-  --borderColor-closed-emphasis: #d9534f;
-  --borderColor-closed-muted: rgba(217, 83, 79, 0.4);
+[data-theme="dark"] {
+  /* ---- Surfaces ---- */
+  --bgColor-default: #0d1117;
+  --bgColor-muted: #161b22;
+  --bgColor-inset: #0a0e13;
+  --bgColor-emphasis: #8b949e;
+  --bgColor-neutral-muted: rgba(139, 148, 158, 0.16);
+  --bgColor-neutral-emphasis: #8b949e;
+  --overlay-bgColor: #161b22;
+  --overlay-backdrop-bgColor: rgba(1, 4, 9, 0.7);
 
-  --fgColor-done: #b06fc4;
-  --bgColor-done-emphasis: #b06fc4;
-  --bgColor-done-muted: rgba(176, 111, 196, 0.14);
-  --borderColor-done-muted: rgba(176, 111, 196, 0.4);
+  /* ---- Text ---- */
+  --fgColor-default: #e6edf3;
+  --fgColor-muted: #8b949e;
+  --fgColor-disabled: rgba(139, 148, 158, 0.6);
+  --fgColor-onEmphasis: #0d1117;
+  --fgColor-link: #22c55e;
 
-  --fgColor-severe: #e0763d;
-  --bgColor-severe-emphasis: #e0763d;
-  --bgColor-severe-muted: rgba(224, 118, 61, 0.14);
-  --borderColor-severe-muted: rgba(224, 118, 61, 0.4);
+  /* ---- Borders ---- */
+  --borderColor-default: #30363d;
+  --borderColor-muted: #21262d;
+  --borderColor-transparent: transparent;
 
-  --fgColor-sponsors: #b06fc4;
-  --bgColor-sponsors-emphasis: #b06fc4;
-  --bgColor-sponsors-muted: rgba(176, 111, 196, 0.14);
-  --borderColor-sponsors-muted: rgba(176, 111, 196, 0.4);
+  /* #30363d is 1.55:1 here, so controls take the same stronger border light
+     mode uses. One value happens to clear 3:1 on both canvases. */
+  --control-borderColor-rest: #6b7280;
+  --control-borderColor-emphasis: #8b949e;
+  --control-borderColor-disabled: #21262d;
+  --control-bgColor-rest: #0d1117;
+  --control-bgColor-disabled: #161b22;
 
-  --fgColor-upsell-muted: #9aa3b2;
-  --bgColor-upsell-muted: rgba(110, 119, 132, 0.14);
-  --borderColor-upsell-muted: rgba(110, 119, 132, 0.4);
+  /* ---- Accent ---- *
+   * On this canvas the brand green reads at 8.31:1, so text and fill are the
+   * same value and the identity is at its strongest. */
+  --fgColor-accent: #22c55e;
+  --fgColor-acccent: #22c55e;
+  --bgColor-accent-emphasis: #22c55e;
+  --bgColor-accent-muted: rgba(34, 197, 94, 0.16);
+  --borderColor-accent-muted: rgba(34, 197, 94, 0.4);
+  --borderColor-accent-emphasis: #22c55e;
+  --underlineNav-borderColor-active: #22c55e;
+  --underlineNav-borderColor-hover: rgba(139, 148, 158, 0.4);
+  --underlineNav-iconColor-rest: #8b949e;
 
-  /* ---- Avatars ---- */
-  --avatar-bgColor: #22262f;
-  --avatarStack-fade-bgColor-default: #2d323d;
-  --avatarStack-fade-bgColor-muted: #242832;
+  /* ---- Success ---- */
+  --fgColor-success: #22c55e;
+  --bgColor-success-emphasis: #22c55e;
+  --bgColor-success-muted: rgba(34, 197, 94, 0.16);
+  --borderColor-success-muted: rgba(34, 197, 94, 0.4);
+
+  /* ---- Danger ---- */
+  --fgColor-danger: #ef4444;
+  --bgColor-danger-emphasis: #ef4444;
+  --bgColor-danger-muted: rgba(239, 68, 68, 0.16);
+  --borderColor-danger-muted: rgba(239, 68, 68, 0.4);
+  --borderColor-danger-emphasis: #ef4444;
+
+  /* ---- Attention ---- */
+  --fgColor-attention: #f59e0b;
+  --bgColor-attention-emphasis: #f59e0b;
+  --bgColor-attention-muted: rgba(245, 158, 11, 0.16);
+  --borderColor-attention-muted: rgba(245, 158, 11, 0.4);
+
+  /* ---- Accent (informational) ---- */
+  --fgColor-info: #3b82f6;
+
+  /* ---- Issue and pull-request states ---- */
+  --fgColor-open: #22c55e;
+  --bgColor-open-emphasis: #22c55e;
+  --bgColor-open-muted: rgba(34, 197, 94, 0.16);
+  --borderColor-open-emphasis: #22c55e;
+  --borderColor-open-muted: rgba(34, 197, 94, 0.4);
+  --fgColor-closed: #ef4444;
+  --bgColor-closed-emphasis: #ef4444;
+  --bgColor-closed-muted: rgba(239, 68, 68, 0.16);
+  --borderColor-closed-emphasis: #ef4444;
+}
+
+/*
+ * Before React runs there is no data-theme attribute, so a reader whose system
+ * is dark would be shown the light scheme for one frame. This covers that gap
+ * and steps aside the moment an explicit choice is present.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bgColor-default: #0d1117;
+    --bgColor-muted: #161b22;
+    --bgColor-inset: #0a0e13;
+    --overlay-bgColor: #161b22;
+    --fgColor-default: #e6edf3;
+    --fgColor-muted: #8b949e;
+    --fgColor-onEmphasis: #0d1117;
+    --fgColor-link: #22c55e;
+    --fgColor-accent: #22c55e;
+    --fgColor-acccent: #22c55e;
+    --borderColor-default: #30363d;
+    --borderColor-muted: #21262d;
+    --control-bgColor-rest: #0d1117;
+  }
 }
