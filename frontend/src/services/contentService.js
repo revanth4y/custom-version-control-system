@@ -3,9 +3,18 @@ import { api } from "./api";
 const base = (owner, repo) => `/repositories/${owner}/${repo}`;
 
 export const contentService = {
-  /** Directory listing at a revision. Omit `path` for the repository root. */
-  async tree(owner, repo, { ref, path } = {}) {
-    const { data } = await api.get(`${base(owner, repo)}/tree`, { params: { ref, path } });
+  /**
+   * Directory listing at a revision. Omit `path` for the repository root.
+   *
+   * `withLastCommit` asks the server to resolve the commit that last touched
+   * each entry. It is the same single request either way — the server walks
+   * history once for the whole listing rather than answering per file — so the
+   * listing gains two columns without gaining a round trip.
+   */
+  async tree(owner, repo, { ref, path, withLastCommit } = {}) {
+    const { data } = await api.get(`${base(owner, repo)}/tree`, {
+      params: { ref, path, ...(withLastCommit ? { withLastCommit: true } : {}) },
+    });
     return data;
   },
 
