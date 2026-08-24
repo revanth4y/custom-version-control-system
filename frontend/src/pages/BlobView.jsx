@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Box, Heading, Text, Octicon, Label } from "@primer/react";
 import { FileBinaryIcon, FileIcon } from "@primer/octicons-react";
@@ -7,7 +7,10 @@ import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary } from "../components/common/states";
 import Markdown from "../components/common/Markdown";
 import BranchSelector from "../components/branch/BranchSelector";
+import BlobActions from "../components/repository/BlobActions";
+import LatestCommitBar from "../components/repository/LatestCommitBar";
 import PathBreadcrumb from "../components/repository/PathBreadcrumb";
+import SourceView from "../components/repository/SourceView";
 import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
 import { contentService } from "../services/contentService";
@@ -38,6 +41,21 @@ const BlobView = () => {
     [owner, name, refName, path],
   );
 
+  /* The commit that last touched this file, taken from the listing of the
+     directory it sits in.
+
+     Not from /commits: that endpoint has no path filter — an unknown parameter
+     is ignored, so asking it for "the last commit on this file" answers with
+     the branch's latest commit whatever file you name. The tree already
+     resolves this per path, correctly, in one request. */
+  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const siblings = useAsync(
+    () => contentService.tree(owner, name, { ref: refName, path: parent, withLastCommit: true }),
+    [owner, name, refName, parent],
+  );
+
+  const lastCommit = siblings.data?.entries?.find((entry) => entry.path === path)?.lastCommit;
+
   const changeRef = useCallback(
     (branch) => navigate(`/${owner}/${name}/blob/${encodeURIComponent(branch)}/${path}`),
     [navigate, owner, name, path],
@@ -67,16 +85,35 @@ const BlobView = () => {
         loadingLabel="Loading file"
         minHeight="220px"
       >
-        {blob.data && <FileContents file={blob.data} />}
+        {blob.data && (
+          <FileContents
+            file={blob.data}
+            owner={owner}
+            name={name}
+            latestCommit={lastCommit}
+          />
+        )}
       </AsyncBoundary>
     </PageContainer>
   );
 };
 
-const FileContents = ({ file }) => {
+const FileContents = ({ file, owner, name, latestCommit }) => {
   const lines = file.binary ? [] : toLines(file.content);
   const isMarkdown = MARKDOWN_EXTENSIONS.has(extensionOf(file.path));
   const tooManyLines = lines.length > MAX_NUMBERED_LINES;
+
+  /* Every text file can be read raw. For markdown that means the source behind
+     the rendered document; for code it means the bytes without numbering or
+     colour, which is what you want when copying a fragment out or checking
+     whitespace. A binary file has no text to reveal, and inventing one would
+     mean printing bytes as characters — the thing the binary state exists to
+     prevent. */
+  const canToggleRaw = !file.binary;
+  const [raw, setRaw] = useState(false);
+  const showRendered = isMarkdown && !raw;
+
+  const isEmpty = !file.binary && file.size === 0;
 
   return (
     <Box
@@ -88,6 +125,8 @@ const FileContents = ({ file }) => {
         overflow: "hidden",
       }}
     >
+      <LatestCommitBar owner={owner} name={name} commit={latestCommit} />
+
       <Box
         sx={{
           display: "flex",
@@ -107,7 +146,9 @@ const FileContents = ({ file }) => {
         </Text>
         <Text sx={{ fontSize: 1, color: "fg.muted" }}>{formatBytes(file.size)}</Text>
 
-        {file.mode === "100755" && <Label sx={{ color: "fg.muted", borderColor: "border.default" }}>Executable</Label>}
+        {file.mode === "100755" && (
+          <Label sx={{ color: "fg.muted", borderColor: "border.default" }}>Executable</Label>
+        )}
 
         <Text
           sx={{ fontFamily: "mono", fontSize: 0, color: "fg.subtle", ml: "auto" }}
@@ -115,20 +156,61 @@ const FileContents = ({ file }) => {
         >
           {file.id?.slice(0, 12)}
         </Text>
+
+        <BlobActions
+          canToggleRaw={canToggleRaw}
+          raw={raw}
+          onToggleRaw={() => setRaw((current) => !current)}
+          copyText={file.binary ? null : file.content}
+        />
       </Box>
 
       {file.binary ? (
         <BinaryNotice file={file} />
-      ) : isMarkdown ? (
+      ) : isEmpty ? (
+        <EmptyFileNotice />
+      ) : showRendered ? (
         <Box sx={{ p: [3, 4] }}>
           <Markdown>{file.content}</Markdown>
         </Box>
+      ) : raw ? (
+        <RawSource content={file.content} />
       ) : (
-        <SourceLines lines={lines} numbered={!tooManyLines} />
+        <SourceView
+          path={file.path}
+          lines={lines}
+          numbered={!tooManyLines}
+          binary={file.binary}
+        />
       )}
     </Box>
   );
 };
+
+/**
+ * The file's bytes, and nothing else.
+ *
+ * No numbering, no colour, no table — those are all things this view exists to
+ * get out of the way. Selecting the pane selects exactly what is in the file,
+ * which is the point of asking for it raw.
+ */
+const RawSource = ({ content }) => (
+  <Box
+    as="pre"
+    sx={{
+      m: 0,
+      p: 3,
+      bg: "canvas.subtle",
+      color: "fg.default",
+      fontFamily: "mono",
+      fontSize: 0,
+      overflowX: "auto",
+      whiteSpace: "pre",
+    }}
+  >
+    {content}
+  </Box>
+);
 
 const BinaryNotice = ({ file }) => (
   <Box sx={{ p: 5, textAlign: "center" }}>
@@ -142,42 +224,22 @@ const BinaryNotice = ({ file }) => (
   </Box>
 );
 
-const SourceLines = ({ lines, numbered }) => (
-  <Box sx={{ overflowX: "auto", bg: "canvas.inset" }}>
-    <Box as="table" sx={{ borderCollapse: "collapse", width: "100%", fontFamily: "mono", fontSize: 0 }}>
-      <Box as="tbody">
-        {lines.map((line, index) => (
-          <Box as="tr" key={index} sx={{ "&:hover": { bg: "canvas.subtle" } }}>
-            {numbered && (
-              <Box
-                as="td"
-                sx={{
-                  // The gutter must not be selectable, or copying a snippet
-                  // takes the line numbers with it.
-                  userSelect: "none",
-                  textAlign: "right",
-                  color: "fg.subtle",
-                  px: 3,
-                  width: "1%",
-                  whiteSpace: "nowrap",
-                  verticalAlign: "top",
-                  borderRight: "1px solid",
-                  borderColor: "border.muted",
-                }}
-              >
-                {index + 1}
-              </Box>
-            )}
-            <Box
-              as="td"
-              sx={{ px: 3, whiteSpace: "pre", color: "fg.default", verticalAlign: "top" }}
-            >
-              {line === "" ? " " : line}
-            </Box>
-          </Box>
-        ))}
-      </Box>
-    </Box>
+/**
+ * A tracked file with nothing in it.
+ *
+ * Worth stating rather than showing an empty pane: a blank area reads as a
+ * failure to load, and the difference between "this file is empty" and "this
+ * file did not arrive" is exactly what a reader needs to know.
+ */
+const EmptyFileNotice = () => (
+  <Box sx={{ p: 5, textAlign: "center" }}>
+    <Octicon icon={FileIcon} size={24} sx={{ color: "fg.subtle" }} />
+    <Heading as="h2" sx={{ fontSize: 2, fontWeight: 600, mt: 2, mb: 1 }}>
+      This file is empty
+    </Heading>
+    <Text sx={{ color: "fg.muted", fontSize: 1, display: "block" }}>
+      It is tracked, but has no contents.
+    </Text>
   </Box>
 );
 
