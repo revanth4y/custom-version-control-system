@@ -30,7 +30,7 @@ const BrandLockup = () => (
       "&:hover .brand-name": { color: "accent.fg" },
     }}
   >
-    <BrandMark size={28} />
+    <BrandMark size={32} tiled />
 
     <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", lineHeight: 1.1 }}>
       <Text
