@@ -1,84 +1,78 @@
 import { Link as RouterLink } from "react-router-dom";
-import { Box, Text, ActionMenu, ActionList, Button } from "@primer/react";
+import { Box, Text, ActionMenu, ActionList, Button, IconButton } from "@primer/react";
 import { PersonIcon, PlusIcon, SignOutIcon } from "@primer/octicons-react";
 
 import { useAuth } from "../../hooks/useAuth";
-import BrandMark from "../common/BrandMark";
 import ThemeToggle from "../common/ThemeToggle";
 import IdentityAvatar from "../common/IdentityAvatar";
+import BrandLockup from "./BrandLockup";
+import GlobalNav from "./GlobalNav";
+import HeaderBar from "./HeaderBar";
+import MobileNav from "./MobileNav";
 
 /**
- * The bar carried by every signed-in page.
+ * The bar carried by every page.
  *
- * Kept deliberately sparse: it is present on every screen, so anything added
- * here competes with the page's own content for attention.
+ * Laid out as the reference has it: the brand at the left edge, the navigation
+ * and the controls gathered at the right, and the space between them left open.
+ *
+ * Two things the reference shows are absent, and deliberately so. The search
+ * field has nothing behind it — there is no search endpoint — and a box that
+ * accepts typing and can never answer is worse than no box. The notification
+ * bell has no event source, and a bell is a claim that something happened. Both
+ * are omitted rather than mocked; the rest of the row keeps its positions.
  */
 const AppHeader = () => {
   const { currentUser, logout } = useAuth();
 
   return (
-    <Box
-      as="header"
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 3,
-        px: [3, 3, 4],
-        height: "56px",
-        bg: "canvas.subtle",
-        borderBottom: "1px solid",
-        borderColor: "border.default",
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-      }}
-    >
-      <Box
-        as={RouterLink}
-        to="/"
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          color: "fg.default",
-          textDecoration: "none",
-          "&:hover": { color: "accent.fg" },
-        }}
-      >
-        <Box sx={{ display: "flex", color: "accent.fg" }}>
-          <BrandMark size={22} />
-        </Box>
-        <Text sx={{ fontWeight: 600, fontSize: 2, letterSpacing: "-0.01em" }}>GitForge</Text>
+    <HeaderBar>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        {currentUser && <MobileNav currentUser={currentUser} />}
+        <BrandLockup />
       </Box>
+
+      {/* Holds the gap the search field occupies in the reference, so the
+          navigation and the controls stay at the right edge rather than sliding
+          across to meet the brand. */}
+      <Box sx={{ flex: 1, minWidth: 0 }} />
+
+      <GlobalNav currentUser={currentUser} />
 
       {/* Signed out, the header offers the way in rather than nothing: a
           public repository is readable without an account, so an anonymous
           visitor is an ordinary visitor, not a lost one. */}
       {!currentUser && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
           <ThemeToggle />
           <Button as={RouterLink} to="/login" size="small">
             Sign in
           </Button>
-          <Button as={RouterLink} to="/signup" size="small" variant="primary" sx={{ display: ["none", "inline-flex"] }}>
+          <Button
+            as={RouterLink}
+            to="/signup"
+            size="small"
+            variant="primary"
+            sx={{ display: ["none", "inline-flex"] }}
+          >
             Create an account
           </Button>
         </Box>
       )}
 
       {currentUser && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <ThemeToggle />
-          <Button
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+          <IconButton
             as={RouterLink}
             to="/new"
+            icon={PlusIcon}
+            aria-label="New repository"
+            variant="invisible"
             size="small"
-            leadingVisual={PlusIcon}
-            sx={{ display: ["none", "inline-flex"] }}
-          >
-            New repository
-          </Button>
+            sx={{ display: ["none", "none", "inline-flex"], color: "fg.muted" }}
+          />
+
+          <ThemeToggle />
 
           <ActionMenu>
             <ActionMenu.Anchor>
@@ -132,7 +126,7 @@ const AppHeader = () => {
           </ActionMenu>
         </Box>
       )}
-    </Box>
+    </HeaderBar>
   );
 };
 
