@@ -27,4 +27,7 @@ export const graphWidth = (laneCount) =>
 export const graphHeight = (rowCount) => Math.max(rowCount, 0) * ROW_HEIGHT;
 
 /** Colour by lane index, so a line keeps its colour for as long as it exists. */
-export const colorForLane = (lane) => laneColors[lane % laneColors.length];
+export const colorForLane = (lane, scheme = "dark") => {
+  const lanes = laneColors[scheme] ?? laneColors.dark;
+  return lanes[lane % lanes.length];
+};

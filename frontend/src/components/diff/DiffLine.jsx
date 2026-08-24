@@ -1,6 +1,6 @@
 import { Box } from "@primer/react";
 
-import { tokens } from "../../theme/gitforge";
+import { diffBackgroundFor, diffForegroundFor } from "../../theme/diffTints";
 
 /**
  * One line of a hunk, exactly as the engine classified it.
@@ -18,11 +18,25 @@ export const OLD_GUTTER = 48;
 export const NEW_GUTTER = 48;
 export const SIGN_GUTTER = 20;
 
-const TONE = {
-  ADDED: { bg: "success.subtle", tint: tokens.successSubtle, edge: "success.emphasis", sign: "+", signColor: "success.fg" },
-  REMOVED: { bg: "danger.subtle", tint: tokens.dangerSubtle, edge: "danger.emphasis", sign: "-", signColor: "danger.fg" },
-  CONTEXT: { bg: "transparent", tint: null, edge: "transparent", sign: "", signColor: "fg.subtle" },
-};
+/* The approved diff colours, not the generic success and danger tints: the
+   palette specifies exact opaque values for these rows in each theme. Being
+   opaque, they also solve the sticky-gutter problem outright - there is nothing
+   translucent for the scrolling code to show through. */
+const toneFor = (scheme) => ({
+  ADDED: {
+    bg: diffBackgroundFor("added", scheme),
+    edge: "success.emphasis",
+    sign: "+",
+    signColor: diffForegroundFor("added", scheme),
+  },
+  REMOVED: {
+    bg: diffBackgroundFor("removed", scheme),
+    edge: "danger.emphasis",
+    sign: "-",
+    signColor: diffForegroundFor("removed", scheme),
+  },
+  CONTEXT: { bg: "transparent", edge: "transparent", sign: "", signColor: "fg.subtle" },
+});
 
 const gutter = (tone, width, left) => ({
   // Copying a snippet should not take the line numbers with it.
@@ -35,20 +49,17 @@ const gutter = (tone, width, left) => ({
   textAlign: "right",
   verticalAlign: "top",
   color: "fg.subtle",
-  // The row tints are translucent, so using one directly here let the code
-  // show through the gutter as it scrolled underneath. The tint is composited
-  // over an opaque base instead, which looks identical and hides what passes
-  // behind it.
-  backgroundColor: "canvas.subtle",
-  backgroundImage: tone.tint ? `linear-gradient(${tone.tint}, ${tone.tint})` : "none",
+  // Opaque, so the code scrolling underneath cannot show through the gutter.
+  backgroundColor: tone.bg === "transparent" ? "canvas.subtle" : tone.bg,
   px: 2,
   whiteSpace: "nowrap",
   overflow: "hidden",
   zIndex: 1,
 });
 
-const DiffLine = ({ line }) => {
-  const tone = TONE[line.type] ?? TONE.CONTEXT;
+const DiffLine = ({ line, scheme }) => {
+  const tones = toneFor(scheme);
+  const tone = tones[line.type] ?? tones.CONTEXT;
 
   return (
     <Box as="tr" sx={{ bg: tone.bg }}>

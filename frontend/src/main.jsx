@@ -1,18 +1,19 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router } from "react-router-dom";
-import { ThemeProvider, BaseStyles } from "@primer/react";
+import { BaseStyles } from "@primer/react";
 
+import "./theme/fonts.css";
 import "./theme/primer-vars.css";
 import "./index.css";
-import { gitforgeTheme } from "./theme/gitforge";
+import { ColorModeProvider } from "./context/ColorModeProvider.jsx";
 import { AuthProvider } from "./context/AuthProvider.jsx";
 import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
 import AppRoutes from "./routes/AppRoutes.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ThemeProvider theme={gitforgeTheme} colorMode="night" nightScheme="dark">
+    <ColorModeProvider>
       <BaseStyles>
         <Router>
           <AuthProvider>
@@ -28,6 +29,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           </AuthProvider>
         </Router>
       </BaseStyles>
-    </ThemeProvider>
+    </ColorModeProvider>
   </React.StrictMode>,
 );

@@ -34,7 +34,8 @@ import PageContainer from "../components/layout/PageContainer";
 import { EmptyState, ErrorState, LoadingState } from "../components/common/states";
 import Notice from "../components/common/Notice";
 import IdentityAvatar from "../components/common/IdentityAvatar";
-import { tokens, laneColors } from "../theme/gitforge";
+import { laneColors, palette } from "../theme/gitforge";
+import { useColorModeContext } from "../context/useColorModeContext";
 
 /**
  * An internal reference for the GitForge design language.
@@ -48,6 +49,10 @@ import { tokens, laneColors } from "../theme/gitforge";
  */
 const DesignSystem = () => {
   const [tab, setTab] = useState("Code");
+  const { scheme } = useColorModeContext();
+  // Shows the scheme actually in effect, so the toggle can be used to compare
+  // the two rather than the page claiming one and rendering the other.
+  const swatches = palette[scheme];
 
   return (
     <PageContainer>
@@ -56,14 +61,14 @@ const DesignSystem = () => {
           GitForge design system
         </Heading>
         <Text sx={{ color: "fg.muted", fontSize: 1 }}>
-          Internal reference. Slate surfaces, ember accent.
+          Internal reference, showing the scheme currently in effect.
         </Text>
       </Box>
 
       <Section title="Palette">
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-          {Object.entries(tokens)
-            .filter(([, value]) => value.startsWith("#"))
+          {Object.entries(swatches)
+            .filter(([, value]) => typeof value === "string" && value.startsWith("#"))
             .map(([name, value]) => (
               <Box
                 key={name}
@@ -87,7 +92,7 @@ const DesignSystem = () => {
 
       <Section title="Graph lanes">
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          {laneColors.map((color, index) => (
+          {laneColors[scheme].map((color, index) => (
             <Box key={color} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Box sx={{ width: "14px", height: "14px", borderRadius: "50%", bg: color }} />
               <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{index}</Text>

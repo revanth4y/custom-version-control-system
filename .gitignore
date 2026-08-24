@@ -41,8 +41,7 @@ logs/
 .settings/
 .project
 .classpath
-# Local editor and assistant tooling: machine-specific, and no business being
-# in a repository someone else reads.
+# Local editor and tooling
 .claude/
 .cursor/
 .aider*
