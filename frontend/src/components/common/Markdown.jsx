@@ -103,7 +103,7 @@ const components = {
         display: className?.includes("task-list-item") ? "flex" : "list-item",
         alignItems: "center",
         gap: 2,
-        "& input[type=checkbox]": { accentColor: "#E0763D", margin: 0 },
+        "& input[type=checkbox]": { accentColor: "var(--bgColor-accent-emphasis)", margin: 0 },
       }}
     >
       {children}

@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { Box, Text } from "@primer/react";
 
 import { busiestDay, describeDay, intensityOf, monthLabels, toWeeks } from "../../utils/contributions";
-import { tokens } from "../../theme/gitforge";
+import { brand, palette } from "../../theme/gitforge";
+import { useColorModeContext } from "../../context/useColorModeContext";
 
 const CELL = 11;
 const GAP = 3;
@@ -11,17 +12,21 @@ const ROWS = 7;
 const LABEL_HEIGHT = 16;
 
 /**
- * Ember at four strengths over the empty square's slate.
+ * The brand green at four strengths over an empty square.
  *
  * A single hue rather than a spectrum: the scale is one quantity getting
  * larger, and colours that change hue imply categories that are not there.
+ *
+ * Built per theme because the empty square has to be the theme's own muted
+ * border - on white, a dark empty square would read as the busiest day rather
+ * than the quietest.
  */
-const SHADES = [
-  tokens.borderMuted,
-  "rgba(224, 118, 61, 0.28)",
-  "rgba(224, 118, 61, 0.50)",
-  "rgba(224, 118, 61, 0.74)",
-  tokens.ember,
+const shadesFor = (scheme) => [
+  palette[scheme].borderMuted,
+  "rgba(34, 197, 94, 0.28)",
+  "rgba(34, 197, 94, 0.50)",
+  "rgba(34, 197, 94, 0.74)",
+  brand.accent,
 ];
 
 /**
@@ -36,6 +41,8 @@ const SHADES = [
  * not using a mouse.
  */
 const ContributionGraph = ({ contributions }) => {
+  const { scheme } = useColorModeContext();
+  const SHADES = shadesFor(scheme);
   const days = contributions?.days ?? [];
   const weeks = toWeeks(days);
   const max = busiestDay(days);
@@ -74,7 +81,7 @@ const ContributionGraph = ({ contributions }) => {
               key={`${label}-${index}`}
               x={index * COLUMN}
               y={11}
-              fill={tokens.muted}
+              fill="currentColor"
               fontSize="10"
             >
               {label}

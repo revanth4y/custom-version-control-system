@@ -8,7 +8,8 @@ import {
   laneX,
   rowY,
 } from "./graphMetrics";
-import { tokens } from "../../theme/gitforge";
+import { palette } from "../../theme/gitforge";
+import { useColorModeContext } from "../../context/useColorModeContext";
 
 /**
  * Draws the commit DAG.
@@ -22,6 +23,7 @@ import { tokens } from "../../theme/gitforge";
  * graph model derived from a real parent id.
  */
 const CommitGraph = ({ graph, ariaHidden = true }) => {
+  const { scheme } = useColorModeContext();
   const width = graphWidth(graph.laneCount);
   const height = graphHeight(graph.rows.length);
 
@@ -36,15 +38,15 @@ const CommitGraph = ({ graph, ariaHidden = true }) => {
       style={{ display: "block", flexShrink: 0, overflow: "visible" }}
     >
       {graph.edges.map((edge) => (
-        <ParentEdge key={`${edge.fromSha}-${edge.toSha}`} edge={edge} />
+        <ParentEdge scheme={scheme} key={`${edge.fromSha}-${edge.toSha}`} edge={edge} />
       ))}
 
       {graph.boundaries.map((stub) => (
-        <BoundaryStub key={`${stub.fromSha}-${stub.parentSha}`} stub={stub} />
+        <BoundaryStub scheme={scheme} key={`${stub.fromSha}-${stub.parentSha}`} stub={stub} />
       ))}
 
       {graph.rows.map((node) => (
-        <CommitNode key={node.sha} node={node} />
+        <CommitNode scheme={scheme} key={node.sha} node={node} />
       ))}
     </svg>
   );
@@ -58,14 +60,14 @@ const CommitGraph = ({ graph, ariaHidden = true }) => {
  * appears to run alongside the mainline and join it at the end rather than
  * cutting diagonally across every row in between.
  */
-const ParentEdge = ({ edge }) => {
+const ParentEdge = ({ edge, scheme }) => {
   const x1 = laneX(edge.fromLane);
   const y1 = rowY(edge.fromRow);
   const x2 = laneX(edge.toLane);
   const y2 = rowY(edge.toRow);
 
   // The colour follows the lane the line spends most of its length in.
-  const color = colorForLane(edge.fromLane === edge.toLane ? edge.fromLane : edge.toLane);
+  const color = colorForLane(edge.fromLane === edge.toLane ? edge.fromLane : edge.toLane, scheme);
   const merging = edge.parentIndex > 0;
 
   let d;
@@ -99,11 +101,11 @@ const ParentEdge = ({ edge }) => {
  * not have it yet, and saying so is the point - the alternative is a line that
  * ends at nothing and reads as the history's beginning.
  */
-const BoundaryStub = ({ stub }) => {
+const BoundaryStub = ({ stub, scheme }) => {
   const x = laneX(stub.fromLane);
   const y = rowY(stub.fromRow);
   const end = y + BOUNDARY_LENGTH;
-  const color = colorForLane(stub.fromLane);
+  const color = colorForLane(stub.fromLane, scheme);
   const id = `fade-${stub.fromSha}-${stub.parentSha}`;
 
   return (
@@ -135,15 +137,16 @@ const BoundaryStub = ({ stub }) => {
  * where lines meet, and stays distinguishable at a glance without relying on
  * colour, which the lanes are already using.
  */
-const CommitNode = ({ node }) => {
+const CommitNode = ({ node, scheme }) => {
+  const canvas = palette[scheme]?.canvas ?? palette.dark.canvas;
   const x = laneX(node.lane);
   const y = rowY(node.row);
-  const color = colorForLane(node.lane);
+  const color = colorForLane(node.lane, scheme);
 
   if (node.isMerge) {
     return (
       <g>
-        <circle cx={x} cy={y} r={MERGE_RADIUS} fill={tokens.canvas} />
+        <circle cx={x} cy={y} r={MERGE_RADIUS} fill={canvas} />
         <circle cx={x} cy={y} r={MERGE_RADIUS} fill="none" stroke={color} strokeWidth="2.25" />
       </g>
     );
@@ -151,7 +154,7 @@ const CommitNode = ({ node }) => {
 
   return (
     <g>
-      <circle cx={x} cy={y} r={DOT_RADIUS} fill={tokens.canvas} />
+      <circle cx={x} cy={y} r={DOT_RADIUS} fill={canvas} />
       <circle cx={x} cy={y} r={DOT_RADIUS} fill={color} fillOpacity="0.9" stroke={color} strokeWidth="1.5" />
     </g>
   );
