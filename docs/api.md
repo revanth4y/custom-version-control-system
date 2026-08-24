@@ -199,16 +199,49 @@ Owner only. **403** if you can read it but do not own it.
 |---|---|
 | `ref` | optional; branch, `HEAD`, or a full commit id. Defaults to `HEAD` |
 | `path` | optional; the directory. Defaults to the root |
+| `withLastCommit` | optional, default `false`; see below |
 
 ```json
 {
+  "ref": "HEAD",
   "path": "",
   "entries": [
-    { "name": "src", "path": "src", "mode": "40000", "id": "...", "directory": true, "size": null },
-    { "name": "README.md", "path": "README.md", "mode": "100644", "id": "...", "directory": false, "size": 412 }
+    { "name": "src", "path": "src", "type": "dir", "mode": "40000", "id": "..." },
+    { "name": "README.md", "path": "README.md", "type": "file", "mode": "100644", "id": "..." }
   ]
 }
 ```
+
+`type` is `dir` or `file`. **Entries carry no size** — a tree records a name, a
+mode and an object id, and nothing else. Read the blob if you need its length.
+
+An empty repository has no tree to list, so this answers **404**.
+
+With `withLastCommit=true`, every entry gains the commit that last touched it:
+
+```json
+{
+  "name": "src", "path": "src", "type": "dir", "mode": "40000", "id": "...",
+  "lastCommit": {
+    "sha": "43d128d708ff43b8ab079c6c7a7fd2181cc38cf9",
+    "shortSha": "43d128d",
+    "message": "Refactor the object store
+",
+    "authorName": "forge-demo",
+    "timestamp": "2026-07-15T09:00:00Z"
+  }
+}
+```
+
+A directory counts as touched when anything beneath it changed. Attribution
+follows the same order the history endpoint returns, so the commit named here is
+the one at the top of that path's history.
+
+The search is **bounded to the 200 most recent commits** reachable from `ref`. A
+path not touched within that window has **no `lastCommit` field** — render it as
+unknown rather than assuming. The field is likewise absent from every entry when
+the parameter is omitted or false, so the response is byte-identical to what it
+was before the parameter existed.
 
 ### `GET /repositories/{owner}/{name}/blob` · anonymous
 

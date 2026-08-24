@@ -11,8 +11,13 @@ import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.storage.ObjectStore;
 import com.gitforge.vcs.tree.TreeWalker;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Reading a repository without changing it.
@@ -139,6 +144,85 @@ public final class RepositoryReader {
                 : objects.readCommit(commit.parents().getFirst()).tree();
 
         return differ.diff(parentTree, commit.tree());
+    }
+
+    /**
+     * The most recent commit to touch each of the given paths.
+     *
+     * <p>Answers the question a file listing asks: for every entry shown, which
+     * commit last changed it and when. A directory counts as touched when
+     * anything beneath it changed, which is what makes the column useful - a
+     * directory almost never changes in its own right.
+     *
+     * <p>The search is <strong>bounded</strong> to the {@code limit} most recent
+     * commits reachable from {@code revision}. A path not touched within that
+     * window is simply absent from the result rather than reported wrongly; the
+     * caller is expected to render that as unknown. Without a bound this would
+     * walk the entire history for every directory listing.
+     *
+     * <p>Commits are examined in the order {@link #history(String, int)} returns
+     * them - nearest the tip first - so the first one seen to touch a path is
+     * the answer and the walk can stop as soon as every path is accounted for.
+     * That is deliberately the same order the history listing shows, so the
+     * commit named against a file here is the one a reader will find at the top
+     * of that file's history.
+     *
+     * <p>Sorting by timestamp instead would be wrong: signatures are stored to
+     * one-second resolution, following Git, so two commits made in the same
+     * second are indistinguishable by time and the tie-break decides
+     * attribution arbitrarily. Graph order has no such ambiguity.
+     *
+     * <p>Attribution uses {@link #changesIn(ObjectId)}, so a merge is credited
+     * with everything it brought in relative to its first parent. That matches
+     * how the rest of this class reads history and keeps one definition of "what
+     * a commit changed".
+     *
+     * @param paths repository-relative paths, as they appear in a listing
+     * @param limit how many commits to look back through; must be positive
+     * @return the touching commit for each path that was resolved
+     */
+    public Map<String, Commit> lastCommits(String revision, Collection<String> paths, int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("History limit must be positive");
+        }
+        if (paths == null || paths.isEmpty()) {
+            return Map.of();
+        }
+
+        Set<String> unresolved = new HashSet<>(paths);
+        unresolved.remove(null);
+        unresolved.remove("");
+        if (unresolved.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Commit> resolved = new HashMap<>();
+
+        for (Commit commit : history(revision, limit)) {
+            for (String changed : changedPaths(commit)) {
+                // Copied because a hit removes from the set being iterated.
+                for (String candidate : List.copyOf(unresolved)) {
+                    if (touches(changed, candidate)) {
+                        resolved.put(candidate, commit);
+                        unresolved.remove(candidate);
+                    }
+                }
+            }
+            if (unresolved.isEmpty()) {
+                // Everything is accounted for; older commits cannot change that.
+                break;
+            }
+        }
+        return Map.copyOf(resolved);
+    }
+
+    private List<String> changedPaths(Commit commit) {
+        return changesIn(commit.id()).changes().stream().map(change -> change.path()).toList();
+    }
+
+    /** A path is touched by a change to itself, or to anything beneath it. */
+    private static boolean touches(String changedPath, String candidate) {
+        return changedPath.equals(candidate) || changedPath.startsWith(candidate + "/");
     }
 
     /** Compares the trees of two revisions. */

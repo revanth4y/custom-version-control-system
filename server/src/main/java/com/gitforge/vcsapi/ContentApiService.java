@@ -3,6 +3,7 @@ package com.gitforge.vcsapi;
 import com.gitforge.common.error.BadRequestException;
 import com.gitforge.common.error.NotFoundException;
 import com.gitforge.user.User;
+import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.FileMode;
 import com.gitforge.vcs.object.TextContent;
 import com.gitforge.vcs.object.TreeEntry;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -39,7 +41,29 @@ public class ContentApiService {
         this.commits = commits;
     }
 
+    /**
+     * How far back a listing looks for the commit that last touched each entry.
+     *
+     * <p>The same bound the history endpoint uses, so "recent" means the same
+     * thing across the API.
+     */
+    static final int LAST_COMMIT_HISTORY = 200;
+
     public DirectoryResponse listDirectory(String owner, String name, User viewer, String ref, String path) {
+        return listDirectory(owner, name, viewer, ref, path, false);
+    }
+
+    /**
+     * Lists a directory, optionally saying which commit last touched each entry.
+     *
+     * <p>The commit lookup is opt-in because it costs a bounded history walk,
+     * and most callers - a breadcrumb, a path check - only want the names. A
+     * caller that does not ask receives exactly the payload it received before
+     * this existed: the field is omitted, not sent as null.
+     */
+    public DirectoryResponse listDirectory(
+            String owner, String name, User viewer, String ref, String path, boolean withLastCommit) {
+
         VcsRepository repository = repositories.forRead(owner, name, viewer);
         String revision = revisionOrHead(ref);
 
@@ -47,10 +71,30 @@ public class ContentApiService {
                 .orElseThrow(() -> new NotFoundException("No such directory at " + revision + ": "
                         + (path == null || path.isBlank() ? "/" : path)));
 
+        if (!withLastCommit) {
+            return new DirectoryResponse(
+                    revision,
+                    path == null ? "" : path,
+                    entries.stream().map(entry -> TreeEntryResponse.from(entry, path)).toList());
+        }
+
+        Map<String, Commit> lastCommits = repository.reader()
+                .lastCommits(revision, entries.stream().map(entry -> pathOf(entry, path)).toList(),
+                        LAST_COMMIT_HISTORY);
+
         return new DirectoryResponse(
                 revision,
                 path == null ? "" : path,
-                entries.stream().map(entry -> TreeEntryResponse.from(entry, path)).toList());
+                entries.stream()
+                        .map(entry -> TreeEntryResponse.from(entry, path, lastCommits.get(pathOf(entry, path))))
+                        .toList());
+    }
+
+    /** The listing path of an entry, matching what TreeEntryResponse reports. */
+    private static String pathOf(TreeEntry entry, String parentPath) {
+        return parentPath == null || parentPath.isBlank()
+                ? entry.name()
+                : parentPath + "/" + entry.name();
     }
 
     public BlobResponse readBlob(String owner, String name, User viewer, String ref, String path) {
