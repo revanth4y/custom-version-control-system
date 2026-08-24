@@ -3,7 +3,8 @@ import { Box, Text, ActionMenu, ActionList, Button } from "@primer/react";
 import { PersonIcon, PlusIcon, SignOutIcon } from "@primer/octicons-react";
 
 import { useAuth } from "../../hooks/useAuth";
-import GitForgeMark from "../common/GitForgeMark";
+import BrandMark from "../common/BrandMark";
+import ThemeToggle from "../common/ThemeToggle";
 import IdentityAvatar from "../common/IdentityAvatar";
 
 /**
@@ -46,7 +47,7 @@ const AppHeader = () => {
         }}
       >
         <Box sx={{ display: "flex", color: "accent.fg" }}>
-          <GitForgeMark size={22} />
+          <BrandMark size={22} />
         </Box>
         <Text sx={{ fontWeight: 600, fontSize: 2, letterSpacing: "-0.01em" }}>GitForge</Text>
       </Box>
@@ -56,6 +57,7 @@ const AppHeader = () => {
           visitor is an ordinary visitor, not a lost one. */}
       {!currentUser && (
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <ThemeToggle />
           <Button as={RouterLink} to="/login" size="small">
             Sign in
           </Button>
@@ -67,6 +69,7 @@ const AppHeader = () => {
 
       {currentUser && (
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <ThemeToggle />
           <Button
             as={RouterLink}
             to="/new"
