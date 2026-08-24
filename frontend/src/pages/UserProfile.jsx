@@ -4,6 +4,7 @@ import { LockIcon, PersonIcon, RepoIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";
+import RepositoryList from "../components/repository/RepositoryList";
 import IdentityAvatar from "../components/common/IdentityAvatar";
 import ContributionGraph from "../components/contributions/ContributionGraph";
 import { useAsync } from "../hooks/useAsync";
@@ -68,7 +69,13 @@ const UserProfile = () => {
                 </AsyncBoundary>
               </Section>
 
-              <Section title="Repositories">
+              {/* Not a Section: that draws its own card, and the repository
+                  list already is one. Nested inside it the rows picked up a
+                  second border and a doubled inset. */}
+              <Box sx={{ minWidth: 0 }}>
+                <Heading as="h2" sx={{ fontSize: 2, fontWeight: 600, mb: 3 }}>
+                  Repositories
+                </Heading>
                 <AsyncBoundary
                   loading={repositories.loading}
                   error={repositories.error}
@@ -82,7 +89,7 @@ const UserProfile = () => {
                     isSelf={isSelf}
                   />
                 </AsyncBoundary>
-              </Section>
+              </Box>
             </Box>
           </Box>
         )}
@@ -138,68 +145,39 @@ const ProfileHeader = ({ profile, repositoryCount, isSelf }) => (
   </Box>
 );
 
-const Repositories = ({ repositories, username, isSelf }) => {
+const Repositories = ({ repositories, isSelf, username }) => {
   if (repositories.length === 0) {
     return (
-      <EmptyState
-        icon={RepoIcon}
-        title="No repositories"
-        message={
-          isSelf
-            ? "You have not created a repository yet."
-            : `${username} has no public repositories.`
-        }
-        minHeight="160px"
-      />
+      <Box
+        sx={{
+          border: "1px solid",
+          borderColor: "border.default",
+          borderRadius: 2,
+          bg: "canvas.subtle",
+        }}
+      >
+        <EmptyState
+          icon={RepoIcon}
+          title="No repositories"
+          message={
+            isSelf
+              ? "You have not created a repository yet."
+              : `${username} has no public repositories.`
+          }
+          minHeight="160px"
+        />
+      </Box>
     );
   }
 
+  /* No "view all" here: this page is the full list. The create action is only
+     offered to the person who could actually use it. */
   return (
-    <Box sx={{ display: "flex", flexDirection: "column" }}>
-      {repositories.map((repo, index) => (
-        <Box
-          key={repo.id}
-          sx={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 2,
-            py: 3,
-            minWidth: 0,
-            borderTop: index === 0 ? "none" : "1px solid",
-            borderColor: "border.muted",
-          }}
-        >
-          <Octicon
-            icon={repo.visibility === "PRIVATE" ? LockIcon : RepoIcon}
-            sx={{ color: "fg.muted", mt: "2px", flexShrink: 0 }}
-          />
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-              <Link
-                as={RouterLink}
-                to={`/${username}/${repo.name}`}
-                sx={{ fontSize: 1, fontWeight: 600, overflowWrap: "anywhere" }}
-              >
-                {repo.name}
-              </Link>
-              {repo.visibility === "PRIVATE" && (
-                <Label sx={{ color: "fg.muted", borderColor: "border.default", flexShrink: 0 }}>
-                  Private
-                </Label>
-              )}
-            </Box>
-            {repo.description && (
-              <Text sx={{ display: "block", fontSize: 0, color: "fg.muted", mt: 1, maxWidth: "70ch" }}>
-                {repo.description}
-              </Text>
-            )}
-            <Text sx={{ display: "block", fontSize: 0, color: "fg.subtle", mt: 1 }}>
-              updated {formatRelativeTime(repo.updatedAt)}
-            </Text>
-          </Box>
-        </Box>
-      ))}
-    </Box>
+    <RepositoryList
+      repositories={repositories}
+      onCreateHref={isSelf ? "/new" : undefined}
+      headingLevel="h3"
+    />
   );
 };
 
