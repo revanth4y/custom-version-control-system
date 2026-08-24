@@ -8,6 +8,8 @@ import {
   IssueOpenedIcon,
 } from "@primer/octicons-react";
 
+import { PAGE_GUTTER, PAGE_MAX_WIDTHS } from "../layout/pageBounds";
+
 /**
  * The repository tabs.
  *
@@ -56,10 +58,10 @@ const RepoNav = ({ owner, name }) => {
         bg: "canvas.subtle",
         borderBottom: "1px solid",
         borderColor: "border.default",
-        px: [3, 3, 4],
       }}
     >
-      <Box sx={{ maxWidth: "1280px", mx: "auto" }}>
+      {/* Same bounds as the header above and the page below — see pageBounds. */}
+      <Box sx={{ maxWidth: PAGE_MAX_WIDTHS.large, mx: "auto", px: PAGE_GUTTER }}>
         <Box
           as="nav"
           aria-label="Repository"
