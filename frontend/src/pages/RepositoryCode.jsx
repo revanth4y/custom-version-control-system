@@ -1,17 +1,21 @@
 import { useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Box, Heading, Text, Octicon } from "@primer/react";
-import { BookIcon, FileDirectoryFillIcon, RepoIcon } from "@primer/octicons-react";
+import { BookIcon, RepoIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";
 import Markdown from "../components/common/Markdown";
 import BranchSelector from "../components/branch/BranchSelector";
 import FileTree from "../components/repository/FileTree";
+import LatestCommitBar from "../components/repository/LatestCommitBar";
 import PathBreadcrumb from "../components/repository/PathBreadcrumb";
+import RepositoryMeta from "../components/repository/RepositoryMeta";
 import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
+import { commitService } from "../services/commitService";
 import { contentService } from "../services/contentService";
+import { insightsService } from "../services/insightsService";
 
 /** Filenames treated as the repository's README, in order of preference. */
 const README_NAMES = ["README.md", "readme.md", "README", "readme", "README.markdown"];
@@ -31,12 +35,31 @@ const RepositoryCode = () => {
   const refName = params.ref ? decodeURIComponent(params.ref) : head?.branch ?? "HEAD";
   const path = params["*"] ?? "";
 
+  /* The listing carries the commit that last touched each entry. It costs no
+     extra request — the server walks history once for the whole directory. */
   const tree = useAsync(
-    () => contentService.tree(owner, name, { ref: refName, path }),
+    () => contentService.tree(owner, name, { ref: refName, path, withLastCommit: true }),
     [owner, name, refName, path],
   );
 
-  const entries = tree.data?.entries ?? [];
+  /* The metadata rail describes the repository as a whole, so it is fetched at
+     the root and not again on the way down a directory. */
+  const insights = useAsync(
+    () => (path ? Promise.resolve(null) : insightsService.forRepository(owner, name)),
+    [owner, name, path],
+  );
+
+  /* The latest commit belongs to the revision, not to the directory being
+     viewed, so `path` is deliberately not a dependency: descending into a
+     folder re-reads the listing without re-reading this. */
+  const latest = useAsync(
+    () => commitService.history(owner, name, { ref: refName, limit: 1 }),
+    [owner, name, refName],
+  );
+
+  /* Memoised so the identity is stable between renders; the README lookup
+     below depends on it and would otherwise re-run on every pass. */
+  const entries = useMemo(() => tree.data?.entries ?? [], [tree.data]);
 
   // Only the repository root shows a README, matching where one is meant to live.
   const readmeEntry = useMemo(
@@ -90,6 +113,17 @@ const RepositoryCode = () => {
         </Box>
       </Box>
 
+      {/* Content beside the metadata rail, as the reference lays it out. The
+          rail drops beneath the listing before it would squeeze it. */}
+      <Box
+        sx={{
+          display: "grid",
+          gap: [3, 3, 4],
+          gridTemplateColumns: ["1fr", "1fr", "minmax(0, 1fr) 296px"],
+          alignItems: "start",
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
       {hasNoCommits ? (
         <Panel>
           <EmptyState
@@ -112,13 +146,9 @@ const RepositoryCode = () => {
           minHeight="220px"
         >
           <Panel>
-            <FileTree
-              owner={owner}
-              name={name}
-              refName={refName}
-              entries={entries}
-              parentPath={path}
-            />
+            {/* The endpoint answers with a bare array of commits. */}
+            <LatestCommitBar owner={owner} name={name} commit={latest.data?.[0]} />
+            <FileTree owner={owner} name={name} refName={refName} entries={entries} />
           </Panel>
 
           {readmeEntry && (
@@ -163,6 +193,15 @@ const RepositoryCode = () => {
           )}
         </AsyncBoundary>
       )}
+        </Box>
+
+        {/* Root only: the figures describe the repository, not the folder. */}
+        {!path && (
+          <Box sx={{ minWidth: 0 }}>
+            <RepositoryMeta insights={insights.data} />
+          </Box>
+        )}
+      </Box>
     </PageContainer>
   );
 };
