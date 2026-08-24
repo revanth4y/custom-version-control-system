@@ -1,0 +1,40 @@
+/*
+ * Self-hosted typefaces.
+ *
+ * Served from our own origin, never a CDN: the Content-Security-Policy is
+ * `font-src 'self'`, and a webfont request to a third party is also a request
+ * that tells that third party who is reading the page.
+ *
+ * Only the latin subsets are referenced. The packages ship cyrillic, greek and
+ * vietnamese cuts too; browsers would never download them thanks to
+ * unicode-range, but naming them here would still copy roughly two megabytes of
+ * unread woff2 into the build.
+ *
+ * Variable fonts, so one file covers every weight rather than one file per
+ * weight. `font-display: swap` shows the fallback stack immediately and swaps
+ * when the file lands, which is the right trade for body text.
+ */
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
