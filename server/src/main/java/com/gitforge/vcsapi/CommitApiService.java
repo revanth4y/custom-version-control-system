@@ -32,11 +32,12 @@ public class CommitApiService {
     private static final int MAX_HISTORY = 200;
 
     /**
-     * Ten megabytes. Holds any source file, image or document someone commits
-     * through a web interface, and twenty times the largest object this engine
-     * has been asked to store.
+     * How large one file may be, from {@link ContentLimits}.
+     *
+     * <p>Read from there rather than restated here, so the figure cannot drift
+     * apart from the one the read path enforces.
      */
-    static final int MAX_BLOB_BYTES = 10 * 1024 * 1024;
+    static final int MAX_BLOB_BYTES = ContentLimits.MAX_BLOB_BYTES;
 
     /**
      * Twelve megabytes across one commit.
@@ -109,6 +110,8 @@ public class CommitApiService {
     CommitSummaryResponse commit(
             String owner, String name, User viewer, String branch, String message, List<FileChange> changes) {
 
+        requireEachFileWithinLimit(changes);
+
         VcsRepository repository = repositories.forWrite(owner, name, viewer);
 
         ObjectId commitId;
@@ -152,6 +155,32 @@ public class CommitApiService {
         return repository.reader().compare(base, head)
                 .map(diff -> new CompareResponse(base, head, DiffResponse.from(diff)))
                 .orElseThrow(() -> new NotFoundException("Cannot resolve one of the revisions to compare"));
+    }
+
+    /**
+     * Refuses any single file over the limit, before the engine is touched.
+     *
+     * <p>Every write reaches the engine through here, which is the reason the
+     * check sits at this level rather than beside each caller. Writing a single
+     * file used to arrive with no size check at all: the measuring above happens
+     * on the way in from a commit request, and {@code PUT /contents} does not
+     * come that way. A file too large to read back could therefore be stored,
+     * and the only endpoint that serves file contents would then refuse it.
+     *
+     * <p>Measured through {@link FileChange#size()}, which does not copy the
+     * content to find out how much of it there is.
+     *
+     * <p>A bad request rather than a payload-too-large, which is what this path
+     * has always answered for an oversized file and what its callers expect.
+     */
+    private static void requireEachFileWithinLimit(List<FileChange> changes) {
+        for (FileChange change : changes) {
+            if (!ContentLimits.withinBlobLimit(change.size())) {
+                throw new BadRequestException(
+                        "'%s' is %d bytes; a single file may be at most %d"
+                                .formatted(change.path(), change.size(), ContentLimits.MAX_BLOB_BYTES));
+            }
+        }
     }
 
     /** @param decoded the already-decoded content for a PUT, null for a DELETE */

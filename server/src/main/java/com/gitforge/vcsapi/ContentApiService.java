@@ -2,6 +2,7 @@ package com.gitforge.vcsapi;
 
 import com.gitforge.common.error.BadRequestException;
 import com.gitforge.common.error.NotFoundException;
+import com.gitforge.common.error.PayloadTooLargeException;
 import com.gitforge.user.User;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.FileMode;
@@ -110,6 +111,19 @@ public class ContentApiService {
 
         byte[] content = repository.reader().readFile(revision, path)
                 .orElseThrow(() -> new NotFoundException("No such file at " + revision + ": " + path));
+
+        /* The same bound every write already passes, so this refuses nothing the
+           API itself could have stored. It stands as the statement of the
+           invariant rather than as a filter that expects to fire: content over
+           the limit can only have arrived below the API, and a response is worth
+           far more than the bytes it carries - text is escaped into JSON, where a
+           single control character becomes six characters, and binary is base64
+           and grows by a third. */
+        if (!ContentLimits.withinBlobLimit(content.length)) {
+            throw new PayloadTooLargeException(
+                    "'%s' is %d bytes; a file may be at most %d to be read through this API"
+                            .formatted(path, content.length, ContentLimits.MAX_BLOB_BYTES));
+        }
 
         return describe(path, entry, content);
     }
