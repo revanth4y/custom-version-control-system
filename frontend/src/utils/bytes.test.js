@@ -49,6 +49,19 @@ describe("toLines", () => {
     expect(toLines("")).toEqual([]);
     expect(toLines(null)).toEqual([]);
   });
+
+  /* The counting has to hold at the size where it starts to matter: past five
+     thousand lines the blob view drops the number gutter, and it decides that
+     from this count. Being one line out here would move that boundary. */
+  it("counts a file large enough to lose its line numbers", () => {
+    const lines = toLines(
+      Array.from({ length: 5001 }, (_, index) => `line ${index + 1}`).join("\n") + "\n",
+    );
+
+    expect(lines).toHaveLength(5001);
+    expect(lines[0]).toBe("line 1");
+    expect(lines.at(-1)).toBe("line 5001");
+  });
 });
 
 describe("extensionOf", () => {
