@@ -7,7 +7,7 @@ import Notice from "../common/Notice";
 export const MAX_TITLE = 200;
 export const MAX_BODY = 20_000;
 
-export function validateTitle(raw) {
+function validateTitle(raw) {
   const title = (raw ?? "").trim();
   if (!title) return "A title is required.";
   if (title.length > MAX_TITLE) return `Must be ${MAX_TITLE} characters or fewer.`;

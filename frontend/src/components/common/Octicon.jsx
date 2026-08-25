@@ -26,6 +26,9 @@ const withoutSx = (Component) => {
   const cached = wrappers.get(Component);
   if (cached) return cached;
 
+  /* Same discard as in RouterLink: `sx` is pulled out so that it cannot
+     travel on to the svg. Silenced for this line only. */
+  // eslint-disable-next-line no-unused-vars
   const Wrapped = forwardRef(({ sx, ...rest }, ref) => <Component ref={ref} {...rest} />);
   Wrapped.displayName = `withoutSx(${Component.displayName || Component.name || "Icon"})`;
   wrappers.set(Component, Wrapped);
