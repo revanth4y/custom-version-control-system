@@ -1,0 +1,118 @@
+# Every gate that has to pass before a change lands.
+#
+# Three independent jobs rather than one, so a lint error reports in under a
+# minute instead of waiting on the backend suite — the integration tests start a
+# real PostgreSQL through Testcontainers and are by far the slowest thing here.
+#
+# No secrets are used, and none are needed. The integration tests supply their
+# own signing secret through @SpringBootTest properties, Testcontainers
+# generates its own database credentials, and the only build argument the
+# frontend image takes has a default. A workflow that needed a secret would also
+# have to run on forks without one, which is a failure mode worth not having.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+# A second push to the same branch makes the first run irrelevant, so stop it
+# rather than queue behind it. Never cancels on main or develop, where each run
+# is the record for a distinct commit.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nothing here writes anything back. Read access to the contents is all a
+# checkout needs, and narrowing it means a compromised action cannot push.
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend — lint, tests, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 20 matches frontend/Dockerfile, so CI exercises the runtime that
+      # actually ships rather than whatever happens to be newest.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Caches ~/.npm only — downloaded packages, never build output or test
+          # results. A cache hit can therefore make a run faster but cannot make
+          # a failing gate pass. Keyed on the lockfile by the action itself.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `ci`, not `install`: it installs exactly the lockfile and fails if
+      # package.json and the lockfile disagree, which keeps the run deterministic.
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # Already configured with --max-warnings 0, so a warning fails the job.
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Tests
+        run: npm run test
+        working-directory: frontend
+
+      # Catches what lint and tests cannot: an import that resolves in Vitest but
+      # not in a production bundle. That has happened here more than once.
+      - name: Production build
+        run: npm run build
+        working-directory: frontend
+
+  backend:
+    name: Backend — unit and integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Temurin 21 matches server/Dockerfile.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Caches ~/.m2 dependencies only, keyed on pom.xml by the action.
+          cache: maven
+
+      # `verify` runs Surefire and then Failsafe, so this one command covers the
+      # unit tests and the integration tests that start PostgreSQL through
+      # Testcontainers. Docker is preinstalled on ubuntu-latest, which is what
+      # makes that possible without any setup step.
+      #
+      # Deliberately no assertion on how many tests ran. One test is annotated
+      # @EnabledOnOs({LINUX, MAC}) — a POSIX executable-bit check that cannot run
+      # on Windows — so the totals legitimately differ by platform, and a
+      # hardcoded number would be wrong somewhere by construction. Maven already
+      # fails on any failure or error, which is the gate that matters.
+      - name: Maven verify
+        run: ./mvnw -B verify
+        working-directory: server
+
+  docker:
+    name: Docker — compose config and image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches a malformed compose file in about a second.
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      # Builds both images. This is the only gate that would catch a broken
+      # Dockerfile, which no amount of testing the source would find.
+      #
+      # Build only — the stack is never started. Bringing it up would need
+      # JWT_SECRET, and would prove nothing that `mvnw verify` has not already
+      # proved against a real database.
+      - name: Build images
+        run: docker compose build
