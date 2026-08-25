@@ -2,6 +2,8 @@ import { Link as RouterLink } from "react-router-dom";
 import { Box, Heading, Text, Label, Link, Octicon } from "@primer/react";
 import { RepoIcon, LockIcon } from "@primer/octicons-react";
 
+import { PAGE_GUTTER, PAGE_MAX_WIDTHS } from "../layout/pageBounds";
+
 /**
  * Identity strip at the top of every repository page.
  *
@@ -19,10 +21,20 @@ const RepoHeader = ({ repository }) => {
         borderBottom: "1px solid",
         borderColor: "border.default",
         pt: 3,
-        px: [3, 3, 4],
       }}
     >
-      <Box sx={{ maxWidth: "1280px", mx: "auto" }}>
+      {/* The gutter belongs inside the capped column, not outside it. With the
+          padding on the full-bleed element the cap was reached 24px sooner, and
+          the repository name sat that far left of the brand above it and the
+          listing below. Same bounds as the app shell and every page, from one
+          place, so the three cannot drift apart again. */}
+      <Box
+        sx={{
+          maxWidth: PAGE_MAX_WIDTHS.large,
+          mx: "auto",
+          px: PAGE_GUTTER,
+        }}
+      >
         <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, flexWrap: "wrap", mb: 1 }}>
           {/* The title is one inline text flow rather than a row of flex items.
               As flex children, the icon, owner and name each wrapped on their

@@ -1,154 +1,117 @@
 import { theme as primerTheme } from "@primer/react";
 
-/**
- * GitForge design tokens.
- *
- * A slate canvas with an ember accent — deliberately distinct from the
- * blue-on-near-black that most code hosts use. "Forge" suggests heated metal, so
- * the accent is copper rather than blue, and the surfaces are cool to let it
- * carry the emphasis.
- *
- * These are the source of truth. Everything below maps them onto Primer's
- * variable names so its components inherit the identity instead of being
- * overridden component by component.
- */
-export const tokens = {
-  canvas: "#14161C",
-  raised: "#1B1E26",
-  overlay: "#22262F",
-  border: "#2D323D",
-  borderMuted: "#242832",
-  /* Brighter than layout borders so an input reads as editable. */
-  controlBorder: "#3A4150",
-  fg: "#E4E7EC",
-  muted: "#9AA3B2",
-  subtle: "#6E7784",
-  ember: "#E0763D",
-  emberBright: "#F08E5A",
-  emberMuted: "#8A4A26",
-  emberSubtle: "rgba(224, 118, 61, 0.14)",
-  success: "#57A571",
-  successSubtle: "rgba(87, 165, 113, 0.14)",
-  danger: "#ED6763",
-  dangerSubtle: "rgba(237, 103, 99, 0.14)",
-  attention: "#D8A33C",
-  attentionSubtle: "rgba(216, 163, 60, 0.14)",
-};
+import { brand, fonts, laneColors, palette, radii, withAlpha } from "./palette";
 
-/** Lane colours for the commit graph, reused by any categorical colouring. */
-export const laneColors = [
-  tokens.ember,
-  tokens.success,
-  "#5B8DD9",
-  "#B06FC4",
-  tokens.attention,
-  "#4AA8A0",
-];
-
-export const fonts = {
-  body: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-};
+export { brand, fonts, laneColors, languageColors, palette, radii, terminal, withAlpha } from "./palette";
 
 /**
- * Primer's dark scheme with GitForge colours substituted.
+ * GitForge design tokens over Primer.
+ *
+ * Two real colour schemes now. V1 mapped `light`, `dark` and `dark_dimmed` to
+ * the same dark object, so a system preference for light rendered a dark page;
+ * each is built properly here from {@link palette}.
  *
  * Only the variables Primer actually reads are replaced, so components keep
  * their built-in behaviour — focus rings, disabled states, elevation — while
- * taking on this palette.
+ * taking on this palette. That is what lets a retheme of this size touch one
+ * file: roughly 370 usages across the application name Primer variables rather
+ * than colours.
  */
-const gitforgeDark = {
-  ...primerTheme.colorSchemes.dark,
+const schemeFrom = (p, base) => ({
+  ...base,
   colors: {
-    ...primerTheme.colorSchemes.dark.colors,
+    ...base.colors,
 
-    canvasDefault: tokens.canvas,
-    canvasOverlay: tokens.overlay,
-    canvasInset: "#101218",
-    canvasSubtle: tokens.raised,
+    canvasDefault: p.canvas,
+    canvasOverlay: p.surface,
+    canvasInset: p.inset,
+    canvasSubtle: p.surface,
 
-    fgDefault: tokens.fg,
-    fgMuted: tokens.muted,
-    fgSubtle: tokens.subtle,
-    fgOnEmphasis: "#FFFFFF",
+    fgDefault: p.fg,
+    fgMuted: p.fgMuted,
+    /* V1 had a third, dimmer foreground that measured 3.99:1 — below AA — and
+       was used in sixty places. There are two now, and both pass. */
+    fgSubtle: p.fgMuted,
+    fgOnEmphasis: p.buttonText,
 
-    borderDefault: tokens.border,
-    borderMuted: tokens.borderMuted,
-    borderSubtle: tokens.borderMuted,
+    borderDefault: p.border,
+    borderMuted: p.borderMuted,
+    borderSubtle: p.borderMuted,
 
     accent: {
-      fg: tokens.emberBright,
-      emphasis: tokens.ember,
-      muted: tokens.emberMuted,
-      subtle: tokens.emberSubtle,
+      /* Text and links: the darker step in light mode, brand green in dark. */
+      fg: p.accentText,
+      /* Fills: brand green in both, which is what keeps the identity constant. */
+      emphasis: brand.accent,
+      muted: withAlpha(brand.accent, 0.4),
+      subtle: withAlpha(brand.accent, p.tintAlpha),
     },
     success: {
-      fg: tokens.success,
-      emphasis: tokens.success,
-      muted: "rgba(79, 157, 105, 0.4)",
-      subtle: tokens.successSubtle,
+      fg: p.success,
+      emphasis: brand.accent,
+      muted: withAlpha(p.success, 0.4),
+      subtle: withAlpha(p.success, p.tintAlpha),
     },
     danger: {
-      fg: tokens.danger,
-      emphasis: tokens.danger,
-      muted: "rgba(217, 83, 79, 0.4)",
-      subtle: tokens.dangerSubtle,
+      fg: p.error,
+      emphasis: p.error,
+      muted: withAlpha(p.error, 0.4),
+      subtle: withAlpha(p.error, p.tintAlpha),
     },
     attention: {
-      fg: tokens.attention,
-      emphasis: tokens.attention,
-      muted: "rgba(216, 163, 60, 0.4)",
-      subtle: tokens.attentionSubtle,
+      fg: p.warning,
+      emphasis: p.warning,
+      muted: withAlpha(p.warning, 0.4),
+      subtle: withAlpha(p.warning, p.tintAlpha),
     },
     neutral: {
-      emphasisPlus: tokens.fg,
-      emphasis: tokens.subtle,
-      muted: "rgba(110, 119, 132, 0.4)",
-      subtle: tokens.overlay,
+      emphasisPlus: p.fg,
+      emphasis: p.fgMuted,
+      muted: withAlpha(p.fgMuted, 0.4),
+      subtle: p.inset,
     },
 
-    // Primer reads these for buttons; without them the default dark greys leak
-    // through and sit oddly against the warmer canvas.
     btn: {
-      ...primerTheme.colorSchemes.dark.colors.btn,
-      text: tokens.fg,
-      bg: tokens.overlay,
-      border: tokens.border,
-      hoverBg: "#2A2F3A",
-      hoverBorder: "#3A414F",
-      activeBg: "#32384499",
-      selectedBg: "#2A2F3A",
+      ...base.colors.btn,
+      text: p.fg,
+      bg: p.surface,
+      border: p.border,
+      hoverBg: p.inset,
+      hoverBorder: p.controlBorder,
+      activeBg: p.inset,
+      selectedBg: p.inset,
       primary: {
-        ...primerTheme.colorSchemes.dark.colors.btn.primary,
-        // Dark on ember, not white. Ember is a mid-tone orange: white text on
-        // it measures 3.08:1, below the 4.5:1 that normal text needs, while
-        // the canvas colour on the same background measures 5.88:1. Keeping
-        // the accent vivid and darkening the label is the readable way round.
-        text: tokens.canvas,
-        bg: tokens.ember,
-        border: "rgba(0,0,0,0.2)",
-        hoverBg: tokens.emberBright,
-        hoverText: tokens.canvas,
-        hoverBorder: "rgba(0,0,0,0.2)",
-        selectedBg: tokens.emberMuted,
-        disabledText: "rgba(20, 22, 28, 0.55)",
-        disabledBg: "rgba(224, 118, 61, 0.5)",
+        ...base.colors.btn.primary,
+        /* Light darkens the fill so a white label can sit on it; dark keeps the
+           brand green and darkens the label instead. White on #22C55E is
+           2.28:1 either way, so one of the two has to give. */
+        text: p.buttonText,
+        bg: p.buttonBg,
+        border: "rgba(0,0,0,0.12)",
+        hoverBg: p.buttonHoverBg,
+        hoverText: p.buttonText,
+        hoverBorder: "rgba(0,0,0,0.12)",
+        selectedBg: p.buttonActiveBg,
+        disabledText: withAlpha(p.buttonText, 0.6),
+        disabledBg: withAlpha(p.buttonBg, 0.5),
       },
       danger: {
-        ...primerTheme.colorSchemes.dark.colors.btn.danger,
-        text: tokens.danger,
-        hoverBg: tokens.danger,
+        ...base.colors.btn.danger,
+        text: p.error,
+        hoverBg: p.error,
         hoverText: "#FFFFFF",
       },
     },
 
-    // The underline that marks the current tab.
     underlineNav: {
-      icon: tokens.muted,
-      borderActive: tokens.ember,
+      icon: p.fgMuted,
+      borderActive: brand.accent,
     },
   },
-};
+});
+
+const gitforgeLight = schemeFrom(palette.light, primerTheme.colorSchemes.light);
+const gitforgeDark = schemeFrom(palette.dark, primerTheme.colorSchemes.dark);
 
 export const gitforgeTheme = {
   ...primerTheme,
@@ -157,12 +120,15 @@ export const gitforgeTheme = {
     normal: fonts.body,
     mono: fonts.mono,
   },
+  radii: [radii.sm, radii.md, radii.lg],
   colorSchemes: {
     ...primerTheme.colorSchemes,
+    light: gitforgeLight,
     dark: gitforgeDark,
-    // Only one scheme is supported for now; mapping light to the same values
-    // keeps a system preference for light from rendering an unstyled page.
-    light: gitforgeDark,
     dark_dimmed: gitforgeDark,
   },
 };
+
+/** Lane colours for the commit graph, resolved for the active scheme. */
+export const lanesFor = (colorScheme) =>
+  colorScheme === "light" ? laneColors.light : laneColors.dark;

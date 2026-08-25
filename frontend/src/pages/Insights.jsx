@@ -9,7 +9,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
 import { insightsService } from "../services/insightsService";
 import { formatAbsoluteTime } from "../utils/dates";
-import { tokens } from "../theme/gitforge";
+import { brand } from "../theme/gitforge";
 
 /**
  * What the repository adds up to.
@@ -207,7 +207,7 @@ const Activity = ({ activity }) => {
                 height: `${Math.max((day.count / max) * 100, 6)}%`,
                 borderRadius: 1,
                 bg: "accent.emphasis",
-                backgroundImage: `linear-gradient(${tokens.ember}, ${tokens.emberMuted})`,
+                backgroundImage: `linear-gradient(${brand.accent}, ${brand.accentHover})`,
               }}
             />
           ))}

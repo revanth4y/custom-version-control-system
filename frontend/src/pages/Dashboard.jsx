@@ -1,23 +1,15 @@
 import { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import {
-  Box,
-  Heading,
-  Text,
-  TextInput,
-  Button,
-  Label,
-  Link,
-  Octicon,
-} from "@primer/react";
-import { RepoIcon, SearchIcon, PlusIcon, LockIcon } from "@primer/octicons-react";
+import { Box, Heading, Text, TextInput, Button, Link } from "@primer/react";
+import { RepoIcon, SearchIcon, PlusIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
+import RepositoryList from "../components/repository/RepositoryList";
 import { AsyncBoundary, EmptyState } from "../components/common/states";
+import { repositoryCountLabel } from "../utils/repositories";
 import { useAsync } from "../hooks/useAsync";
 import { useAuth } from "../hooks/useAuth";
 import { repoService } from "../services/repoService";
-import { formatRelativeTime } from "../utils/dates";
 
 /**
  * Landing page for a signed-in user: their repositories, and a little discovery.
@@ -121,18 +113,12 @@ const Dashboard = () => {
                 />
               </Panel>
             ) : (
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: "border.default",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                }}
-              >
-                {filtered.map((repo, index) => (
-                  <RepositoryRow key={repo.id} repo={repo} isFirst={index === 0} />
-                ))}
-              </Box>
+              <RepositoryList
+                repositories={filtered}
+                title={repositoryCountLabel(mine.data?.length)}
+                viewAll={{ to: `/${currentUser.username}`, label: "View all" }}
+                onCreateHref="/new"
+              />
             )}
           </AsyncBoundary>
         </Box>
@@ -202,50 +188,6 @@ const Dashboard = () => {
     </PageContainer>
   );
 };
-
-const RepositoryRow = ({ repo, isFirst }) => (
-  <Box
-    sx={{
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 3,
-      p: 3,
-      bg: "canvas.subtle",
-      borderTop: isFirst ? "none" : "1px solid",
-      borderColor: "border.muted",
-      "&:hover": { bg: "canvas.overlay" },
-    }}
-  >
-    <Octicon icon={repo.visibility === "PRIVATE" ? LockIcon : RepoIcon} sx={{ color: "fg.muted", mt: 1 }} />
-
-    <Box sx={{ minWidth: 0, flex: 1 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-        <Link
-          as={RouterLink}
-          to={`/${repo.ownerUsername}/${repo.name}`}
-          sx={{ fontSize: 2, fontWeight: 600 }}
-        >
-          {repo.name}
-        </Link>
-        {/* The secondary variant borders with border.muted, which is too dark
-            against the row surface to read as a pill at this size. */}
-        <Label sx={{ color: "fg.muted", borderColor: "border.default" }}>
-          {repo.visibility === "PRIVATE" ? "Private" : "Public"}
-        </Label>
-      </Box>
-
-      {repo.description && (
-        <Text as="p" sx={{ color: "fg.muted", fontSize: 1, mt: 1, mb: 0 }}>
-          {repo.description}
-        </Text>
-      )}
-
-      <Text sx={{ color: "fg.subtle", fontSize: 0, display: "block", mt: 2 }}>
-        Updated {formatRelativeTime(repo.updatedAt)}
-      </Text>
-    </Box>
-  </Box>
-);
 
 const Panel = ({ children }) => (
   <Box

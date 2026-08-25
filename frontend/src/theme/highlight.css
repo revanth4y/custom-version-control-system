@@ -1,0 +1,71 @@
+/*
+ * Syntax colours, drawn from the approved palette.
+ *
+ * highlight.js ships dozens of themes and every one of them brings its own
+ * colours, which would put a second, unrelated palette inside an application
+ * that has one. These rules map its token classes onto the semantic tokens the
+ * design system already defines, so code follows the theme like everything else
+ * and there is nothing extra to keep in step.
+ *
+ * Both schemes are covered without a second block: the tokens themselves change
+ * with `data-theme`, so the mapping is written once.
+ *
+ * Colour is the only thing applied. No weight, size or family is set here — the
+ * viewer's monospace typography is what the reference draws, and highlighting
+ * must not shift a single glyph.
+ */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--fgColor-muted);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: var(--fgColor-danger);
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+  color: var(--fgColor-success);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-selector-id,
+.hljs-title.class_,
+.hljs-deletion {
+  color: var(--fgColor-attention);
+}
+
+.hljs-variable,
+.hljs-attr,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-params,
+.hljs-title.function_,
+.hljs-property {
+  color: var(--fgColor-accent);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
