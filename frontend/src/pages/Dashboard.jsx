@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
 import { Box, Heading, Text, TextInput, Button, Link } from "@primer/react";
 import { RepoIcon, SearchIcon, PlusIcon } from "@primer/octicons-react";
 

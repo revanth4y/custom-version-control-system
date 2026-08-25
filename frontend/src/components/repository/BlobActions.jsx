@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Box, Button, Octicon, Text } from "@primer/react";
+import { Box, Button, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 
 /**

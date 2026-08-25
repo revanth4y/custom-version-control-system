@@ -17,8 +17,8 @@ import {
   UnderlineNav,
   Link,
   ProgressBar,
-  Octicon,
 } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import {
   RepoIcon,
   GitBranchIcon,

@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link as RouterLink, useSearchParams } from "react-router-dom";
-import { Box, Button, Heading, Link, Text, Octicon, Spinner } from "@primer/react";
+import { useSearchParams } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
+import { Box, Button, Heading, Link, Text, Spinner } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { ArrowLeftIcon, GitMergeIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";

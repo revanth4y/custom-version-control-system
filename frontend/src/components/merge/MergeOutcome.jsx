@@ -1,5 +1,6 @@
-import { Link as RouterLink } from "react-router-dom";
-import { Box, Heading, Link, Text, Octicon } from "@primer/react";
+import RouterLink from "../common/RouterLink";
+import { Box, Heading, Link, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import {
   AlertIcon,
   CheckCircleIcon,

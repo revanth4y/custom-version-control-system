@@ -1,4 +1,5 @@
-import { Box, Octicon, Text } from "@primer/react";
+import { Box, Text } from "@primer/react";
+import Octicon from "./Octicon";
 import { InfoIcon, CheckCircleIcon, AlertIcon, StopIcon } from "@primer/octicons-react";
 
 const VARIANTS = {

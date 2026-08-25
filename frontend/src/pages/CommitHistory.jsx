@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
 import { Box, Button, Heading, Text, Spinner } from "@primer/react";
 import { GitCommitIcon, GitCompareIcon } from "@primer/octicons-react";
 

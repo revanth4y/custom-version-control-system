@@ -1,5 +1,6 @@
 import { Component } from "react";
-import { Box, Button, Heading, Text, Octicon } from "@primer/react";
+import { Box, Button, Heading, Text } from "@primer/react";
+import Octicon from "./Octicon";
 import { AlertIcon } from "@primer/octicons-react";
 
 /**

@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Box, Heading, Text, Octicon } from "@primer/react";
+import { Box, Heading, Text } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { BookIcon, RepoIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";

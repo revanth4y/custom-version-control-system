@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import { Box, Button, Octicon, Text } from "@primer/react";
+import { Box, Button, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { GitBranchIcon } from "@primer/octicons-react";
 
 import ModalDialog from "../common/ModalDialog";

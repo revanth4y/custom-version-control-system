@@ -1,4 +1,5 @@
-import { Link as RouterLink, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import RouterLink from "../common/RouterLink";
 import { Box } from "@primer/react";
 
 import { activeNavKey, navItemsFor } from "../../utils/navigation";
