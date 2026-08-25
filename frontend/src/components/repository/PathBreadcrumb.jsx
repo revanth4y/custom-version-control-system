@@ -17,6 +17,7 @@ const PathBreadcrumb = ({ owner, name, refName, path }) => {
 
   return (
     <Box
+      as="nav"
       aria-label="Path"
       sx={{
         display: "flex",
