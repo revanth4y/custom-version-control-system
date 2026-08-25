@@ -18,6 +18,11 @@ import { Link } from "react-router-dom";
  * redundant attribute stops being written. `forwardRef` matters: overlays and
  * menus anchor themselves to these elements.
  */
+/* `sx` is destructured only so that it is *not* in `rest`, and therefore
+   never reaches the anchor. Discarding it is the entire point of this
+   component, so the rule is silenced for this line alone rather than
+   relaxed anywhere wider. */
+// eslint-disable-next-line no-unused-vars
 const RouterLink = forwardRef(({ sx, ...rest }, ref) => <Link ref={ref} {...rest} />);
 
 RouterLink.displayName = "RouterLink";

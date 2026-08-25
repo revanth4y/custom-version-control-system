@@ -10,7 +10,7 @@ import Notice from "../components/common/Notice";
 import BranchSelector from "../components/branch/BranchSelector";
 import CommitGraph from "../components/commit/CommitGraph";
 import CommitRow from "../components/commit/CommitRow";
-import { ROW_HEIGHT, graphWidth } from "../components/commit/graphMetrics";
+import { graphWidth } from "../components/commit/graphMetrics";
 import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
 import { commitService } from "../services/commitService";
