@@ -1,5 +1,6 @@
 package com.gitforge.vcsapi;
 
+import com.gitforge.common.error.BadRequestException;
 import com.gitforge.security.AuthenticatedUser;
 import com.gitforge.user.User;
 import com.gitforge.vcsapi.dto.CommitDetailResponse;
@@ -42,14 +43,33 @@ public class CommitController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    /**
+     * History reachable from a revision.
+     *
+     * <p>{@code path} is declared only so it can be refused. History filtered to
+     * one path is not implemented, and an undeclared parameter is silently
+     * dropped by the framework - so asking for it returned the whole branch's
+     * history with a 200 and no sign that the filter had been ignored. Answering
+     * confidently with the wrong commits is worse than not answering: a caller
+     * cannot tell the difference, and a file that changed once would appear to
+     * have changed in every commit since. Saying so plainly costs one parameter.
+     *
+     * <p>Callers that do not send it are unaffected.
+     */
     @GetMapping("/commits")
     public List<CommitSummaryResponse> history(
             @PathVariable String owner,
             @PathVariable String name,
             @RequestParam(required = false) String ref,
             @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String path,
             @AuthenticationPrincipal AuthenticatedUser principal) {
 
+        if (path != null) {
+            throw new BadRequestException(
+                    "History cannot be filtered by path. Omit 'path' for the history of a revision, "
+                            + "or read which commit last touched an entry from the tree listing.");
+        }
         return commits.history(owner, name, viewerOf(principal), ref, limit);
     }
 
