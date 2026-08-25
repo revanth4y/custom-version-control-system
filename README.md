@@ -34,6 +34,11 @@ exactly what conflicted and why.
 tracker with comments, contribution calendars, and per-repository insights
 counted straight out of the object store.
 
+**The web application.** A repository browser with a light and a dark scheme,
+laid out for a phone as readily as a desktop: browse any revision, read a file
+with its syntax highlighted, and see which commit last touched each path in a
+directory. Every value shown comes from the API.
+
 ## The engine
 
 Everything below is implemented with the Java standard library. No JGit, no
@@ -133,11 +138,49 @@ Merging into a branch that is already an ancestor reports `ALREADY_UP_TO_DATE`.
 Merging when your branch has not moved is a `FAST_FORWARDED` — the branch pointer
 advances, no merge commit is made.
 
+## The interface
+
+The web application is where the engine becomes legible, so it shows real values
+and nothing else. Where the backend has no answer, the interface says nothing
+rather than inventing one.
+
+**One design system.** A single palette drives both schemes — light, dark, or
+whatever the operating system currently says — applied through CSS custom
+properties. Contrast is not a claim: `frontend/src/theme/contrast.js` implements
+WCAG 2.1 relative luminance with alpha compositing, and the palette suite checks
+every text, link, button and graph colour against the surface it actually sits
+on. It has failed a real pairing and forced a change more than once.
+
+**A shell that fits the window.** The header carries the brand, the global
+navigation, the theme control and the account menu, held to the same column as
+the page beneath it so nothing drifts out of alignment on a wide display. Below
+the breakpoint the navigation folds into a menu rather than dropping items.
+Layouts are verified at 1440, 1024 and 390 pixels in both schemes.
+
+**Repository list.** One component renders a repository wherever it appears —
+the dashboard and a profile draw the same card — showing its name, visibility,
+description and when it last changed.
+
+**Repository overview.** The file listing carries the commit that last touched
+each path, resolved by the server in the same request that lists the directory
+rather than one request per file. Above it sits the revision's latest commit;
+beside it, what the repository is made of — commits, branches, files, stored
+objects and contributors, counted out of the object store.
+
+**Code browser.** Source is highlighted for twenty-two languages, with the
+grammars loaded on demand, so a reader who never opens a file never downloads a
+highlighter. The colours are the palette's own, and highlighting wraps spans
+around the text without changing a byte of it. **Raw** shows a file without
+numbering or colour — and for Markdown, the source behind the rendered document.
+**Copy** takes the exact contents. Binary files are described rather than
+printed, executables are labelled from their real mode, and an empty file says
+so.
+
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite 5, Primer React, React Router 6 |
+| Frontend | React 18, Vite 5, Primer React, React Router 6, highlight.js |
 | Backend | Java 21, Spring Boot 4.1, Spring Security 7, Spring Data JPA |
 | Database | PostgreSQL 16, Flyway migrations |
 | Object storage | Plain filesystem, one directory per repository |
@@ -302,6 +345,13 @@ author index that does not exist.
 
 **Issue lists are not paginated.** Every issue in a repository is returned in one
 response and filtered in the browser.
+
+**No stars, forks, watchers or language detection.** Nothing counts them and
+nothing infers a language from a file, so the interface does not show them. A
+`LICENSE` is a file like any other; it is not parsed into metadata.
+
+**No blame, and no raw file endpoint.** `GET /blob` answers with JSON, so "raw"
+is a view in the browser rather than a URL that serves the bytes.
 
 **No garbage collection.** Objects left unreachable — by a deleted branch, say —
 stay on disk. Nothing reads them, and nothing reclaims them.
