@@ -1,4 +1,5 @@
-import { Box, Label, Text, Octicon } from "@primer/react";
+import { Box, Label, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { FileBinaryIcon, FileDiffIcon, LawIcon } from "@primer/octicons-react";
 
 import Hunk from "./Hunk";

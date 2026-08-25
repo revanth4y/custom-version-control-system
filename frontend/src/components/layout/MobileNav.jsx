@@ -1,4 +1,5 @@
-import { Link as RouterLink, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import RouterLink from "../common/RouterLink";
 import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import { PlusIcon, ThreeBarsIcon } from "@primer/octicons-react";
 

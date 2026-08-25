@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Box, Heading, Text, Octicon } from "@primer/react";
+import { Box, Heading, Text } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { DatabaseIcon, FileIcon, GitBranchIcon, GitCommitIcon, GraphIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";

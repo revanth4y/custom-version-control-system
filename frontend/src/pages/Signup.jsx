@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
 import { Box, Button, FormControl, TextInput, Flash, Link } from "@primer/react";
 
 import AuthLayout from "./AuthLayout";

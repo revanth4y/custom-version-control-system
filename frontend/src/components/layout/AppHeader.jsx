@@ -1,4 +1,4 @@
-import { Link as RouterLink } from "react-router-dom";
+import RouterLink from "../common/RouterLink";
 import { Box, Text, ActionMenu, ActionList, Button, IconButton } from "@primer/react";
 import { PersonIcon, PlusIcon, SignOutIcon } from "@primer/octicons-react";
 

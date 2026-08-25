@@ -1,5 +1,6 @@
-import { Link as RouterLink } from "react-router-dom";
-import { Box, Label, Link, Text, Octicon } from "@primer/react";
+import RouterLink from "../common/RouterLink";
+import { Box, Label, Link, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { AlertIcon, FileDirectoryFillIcon, FileIcon, TrashIcon } from "@primer/octicons-react";
 
 import { countByKind, deletedBy, describeKind } from "../../utils/merge";

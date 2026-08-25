@@ -1,5 +1,6 @@
-import { Link as RouterLink } from "react-router-dom";
-import { Box, Heading, Text, Label, Link, Octicon } from "@primer/react";
+import RouterLink from "../common/RouterLink";
+import { Box, Heading, Text, Label, Link } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { RepoIcon, LockIcon } from "@primer/octicons-react";
 
 import { PAGE_GUTTER, PAGE_MAX_WIDTHS } from "../layout/pageBounds";

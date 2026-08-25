@@ -1,4 +1,5 @@
-import { Box, Text, Octicon } from "@primer/react";
+import { Box, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { GitCommitIcon } from "@primer/octicons-react";
 
 import { formatAbsoluteTime, formatRelativeTime } from "../../utils/dates";
