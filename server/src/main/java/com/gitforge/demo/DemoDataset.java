@@ -56,6 +56,15 @@ public class DemoDataset {
     private static final String OWNER = "forge-demo";
     private static final String COLLABORATOR = "forge-viewer";
 
+    /**
+     * One line past the point where the blob view stops numbering.
+     *
+     * <p>The threshold is five thousand. Crossing it by a single line is enough
+     * to reach the fallback and keeps the fixture as small as it can honestly
+     * be.
+     */
+    private static final int MANY_LINES = 5_001;
+
     private final AuthService authService;
     private final UserService userService;
     private final RepoService repoService;
@@ -307,6 +316,15 @@ public class DemoDataset {
                 put("long-line.txt", "x".repeat(2_000) + "\n"),
                 // binary: the differ declines to line-diff it
                 FileChange.put("logo.bin", pngBytes(2), FileMode.REGULAR_FILE));
+
+        /* Two files that are unremarkable to store and awkward to display: one
+           with nothing in it at all, and one with more lines than the blob view
+           will number. Both states were written long ago and neither had ever
+           been seen against real data, because nothing in this dataset was
+           empty and nothing was anywhere near long enough. */
+        commit(repo, owner, 5, "main", "Add files that are awkward to display",
+                put("empty.txt", ""),
+                put("many-lines.txt", numberedLines(MANY_LINES)));
     }
 
     /** Long enough that the history has to be paged through. */
@@ -457,6 +475,21 @@ public class DemoDataset {
 
     private static byte[] bytes(String content) {
         return content.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Numbered lines, one per line, ending with a newline.
+     *
+     * <p>Deterministic by construction: a given count always produces the same
+     * bytes, so the blob's id is fixed and a test can name it outright rather
+     * than recomputing what the code just did.
+     */
+    static String numberedLines(int count) {
+        StringBuilder text = new StringBuilder();
+        for (int i = 1; i <= count; i++) {
+            text.append("line ").append(i).append('\n');
+        }
+        return text.toString();
     }
 
     /**
