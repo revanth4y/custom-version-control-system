@@ -5,7 +5,8 @@ import Octicon from "../components/common/Octicon";
 import { BookIcon, RepoIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
-import { AsyncBoundary, EmptyState } from "../components/common/states";
+import { AsyncBoundary, EmptyState, LoadingState } from "../components/common/states";
+import { headResolved, isEmptyRepository, shouldLoadTree } from "../utils/repositoryState";
 import Markdown from "../components/common/Markdown";
 import BranchSelector from "../components/branch/BranchSelector";
 import FileTree from "../components/repository/FileTree";
@@ -37,10 +38,19 @@ const RepositoryCode = () => {
   const path = params["*"] ?? "";
 
   /* The listing carries the commit that last touched each entry. It costs no
-     extra request — the server walks history once for the whole directory. */
+     extra request — the server walks history once for the whole directory.
+
+     Not requested until HEAD has resolved and names a commit. A repository with
+     no commits has no tree, and the server says so with a 404 — correctly, but
+     HEAD has already told us, so the request only produces an error in the
+     console for something we knew. */
+  const loadTree = shouldLoadTree(head);
   const tree = useAsync(
-    () => contentService.tree(owner, name, { ref: refName, path, withLastCommit: true }),
-    [owner, name, refName, path],
+    () =>
+      loadTree
+        ? contentService.tree(owner, name, { ref: refName, path, withLastCommit: true })
+        : Promise.resolve(null),
+    [owner, name, refName, path, loadTree],
   );
 
   /* The metadata rail describes the repository as a whole, so it is fetched at
@@ -84,9 +94,13 @@ const RepositoryCode = () => {
     [navigate, owner, name, path],
   );
 
-  // A repository with no commits has no tree at all; the API reports that as a
-  // missing path, which is the expected state rather than a failure.
-  const hasNoCommits = !head?.commit;
+  /* Three states, not two. A repository with no commits has no tree at all, and
+     the API reports that as a missing path rather than as a failure — but until
+     HEAD answers, "no commit" and "not yet known" look identical, and treating
+     the second as the first shows the empty state to someone whose repository
+     is merely still loading. */
+  const headIsKnown = headResolved(head);
+  const hasNoCommits = isEmptyRepository(head);
 
   return (
     <PageContainer>
@@ -125,7 +139,9 @@ const RepositoryCode = () => {
         }}
       >
         <Box sx={{ minWidth: 0 }}>
-      {hasNoCommits ? (
+      {!headIsKnown ? (
+        <LoadingState label="Loading files" minHeight="220px" />
+      ) : hasNoCommits ? (
         <Panel>
           <EmptyState
             icon={RepoIcon}

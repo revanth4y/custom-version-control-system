@@ -16,6 +16,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
 import { contentService } from "../services/contentService";
 import { extensionOf, formatBytes, toLines } from "../utils/bytes";
+import { shouldLoadTree } from "../utils/repositoryState";
 
 /** Beyond this many lines the file is shown without numbering, to keep it responsive. */
 const MAX_NUMBERED_LINES = 5000;
@@ -50,9 +51,13 @@ const BlobView = () => {
      the branch's latest commit whatever file you name. The tree already
      resolves this per path, correctly, in one request. */
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const loadSiblings = shouldLoadTree(head);
   const siblings = useAsync(
-    () => contentService.tree(owner, name, { ref: refName, path: parent, withLastCommit: true }),
-    [owner, name, refName, parent],
+    () =>
+      loadSiblings
+        ? contentService.tree(owner, name, { ref: refName, path: parent, withLastCommit: true })
+        : Promise.resolve(null),
+    [owner, name, refName, parent, loadSiblings],
   );
 
   const lastCommit = siblings.data?.entries?.find((entry) => entry.path === path)?.lastCommit;
