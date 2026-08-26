@@ -14,6 +14,16 @@ public sealed interface FileChange permits FileChange.Put, FileChange.Delete {
 
     String path();
 
+    /**
+     * How many bytes this change writes; zero for a deletion.
+     *
+     * <p>Exists so a caller can measure a change without taking a copy of it.
+     * {@link Put#content()} clones on every call, which is right for handing the
+     * array out and wasteful when the only question is how big it is - and the
+     * changes worth asking about are the large ones.
+     */
+    long size();
+
     /** Create or replace the file at {@code path}. */
     record Put(String path, byte[] content, FileMode mode) implements FileChange {
 
@@ -34,6 +44,11 @@ public sealed interface FileChange permits FileChange.Put, FileChange.Delete {
         public byte[] content() {
             return content.clone();
         }
+
+        @Override
+        public long size() {
+            return content.length;
+        }
     }
 
     /** Remove the file at {@code path}. */
@@ -43,6 +58,11 @@ public sealed interface FileChange permits FileChange.Put, FileChange.Delete {
             if (path == null || path.isBlank()) {
                 throw new IllegalArgumentException("A file change requires a path");
             }
+        }
+
+        @Override
+        public long size() {
+            return 0;
         }
     }
 

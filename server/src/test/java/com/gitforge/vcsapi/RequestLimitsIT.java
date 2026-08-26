@@ -2,19 +2,28 @@ package com.gitforge.vcsapi;
 
 import com.gitforge.AbstractIntegrationTest;
 import com.gitforge.common.web.RequestSizeLimitFilter;
+import com.gitforge.user.User;
+import com.gitforge.user.UserService;
+import com.gitforge.vcs.object.FileMode;
+import com.gitforge.vcs.object.Signature;
+import com.gitforge.vcs.repository.FileChange;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,6 +38,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RequestLimitsIT extends AbstractIntegrationTest {
 
     private String token;
+
+    @Autowired
+    private VcsRepositoryProvider repositories;
+
+    @Autowired
+    private UserService users;
 
     @BeforeEach
     void seed() throws Exception {
@@ -82,6 +97,107 @@ class RequestLimitsIT extends AbstractIntegrationTest {
                     })
                     .sum();
         }
+    }
+
+    /** A single-file write, the path that used to reach the engine unmeasured. */
+    private ResultActions putContents(String path, int size) throws Exception {
+        return mockMvc.perform(put("/api/v1/repositories/octocat/demo/contents")
+                .header("Authorization", bearer(token))
+                .contentType("application/json")
+                .content("""
+                        {"branch":"main","path":"%s","message":"write a file","content":"%s"}
+                        """.formatted(path, "a".repeat(size))));
+    }
+
+    @Test
+    void aSingleFileWriteAtTheLimitIsAccepted() throws Exception {
+        putContents("at-limit.txt", ContentLimits.MAX_BLOB_BYTES)
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/blob").param("path", "at-limit.txt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(ContentLimits.MAX_BLOB_BYTES));
+    }
+
+    @Test
+    void aSingleFileWriteOverTheLimitIsRefusedAndNothingIsWritten() throws Exception {
+        /* This path once went straight to the engine: the measuring happens on
+           the way in from a commit request, and writing one file does not come
+           that way. A file too large to read back could be stored, and the only
+           endpoint that serves contents would then refuse it. */
+        String before = headSha();
+        long bytesBefore = storedBytes();
+
+        putContents("too-big.txt", ContentLimits.MAX_BLOB_BYTES + 1)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("too-big.txt")));
+
+        assertThat(headSha()).isEqualTo(before);
+        assertThat(storedBytes()).isEqualTo(bytesBefore);
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/blob").param("path", "too-big.txt"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aFileTooLargeToServeIsRefusedRatherThanSent() throws Exception {
+        /* Written underneath the API, because no endpoint will accept it any
+           more. That is the only way such a file can exist - seeded, restored,
+           or stored before the write paths agreed on a limit - and it is exactly
+           the case the read check is here for. */
+        writeBelowTheApi("oversized.bin", new byte[ContentLimits.MAX_BLOB_BYTES + 1]);
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/blob").param("path", "oversized.bin"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.status").value(413))
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("oversized.bin")));
+
+        // The listing still shows it: the file exists, it just cannot be served
+        // through this endpoint.
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/tree"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[?(@.name == 'oversized.bin')]").exists());
+    }
+
+    /** Commits through the engine, below every check the API applies. */
+    private void writeBelowTheApi(String path, byte[] content) {
+        User owner = users.requireByUsername("octocat");
+
+        repositories.forWrite("octocat", "demo", owner).commits().commit(
+                "main",
+                List.of(FileChange.put(path, content, FileMode.REGULAR_FILE)),
+                Signature.of("octocat", "octocat@gitforge.test", Instant.now()),
+                "written below the API");
+    }
+
+    @Test
+    void historyCannotBeFilteredByPathAndSaysSo() throws Exception {
+        /* An undeclared parameter is dropped silently, so this used to answer
+           200 with the whole branch's history and no sign the filter had been
+           ignored. */
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits").param("path", "README.md"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("path")));
+    }
+
+    @Test
+    void historyWithoutAPathIsUnchanged() throws Exception {
+        // The guard must be invisible to every caller that does not ask for it.
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sha").value(headSha()));
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits").param("ref", "main"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sha").value(headSha()));
     }
 
     @Test
