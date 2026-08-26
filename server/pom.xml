@@ -11,7 +11,7 @@
 
 	<groupId>com.gitforge</groupId>
 	<artifactId>server</artifactId>
-	<version>2.0.0</version>
+	<version>2.0.1</version>
 	<name>gitforge-server</name>
 	<description>GitForge server: GitHub-style application backed by a custom version control engine</description>
 
