@@ -10,11 +10,14 @@ import com.gitforge.user.User;
 import com.gitforge.user.UserService;
 import com.gitforge.vcs.repository.RepositoryId;
 import com.gitforge.vcs.repository.VcsRepositoryFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +37,8 @@ public class RepoService {
 
     /** The branch a new repository's HEAD names before its first commit. */
     private static final String DEFAULT_BRANCH = "main";
+
+    private static final Logger log = LoggerFactory.getLogger(RepoService.class);
 
     private final RepoRepository repoRepository;
     private final UserService userService;
@@ -162,9 +167,37 @@ public class RepoService {
         return RepoResponse.from(repo);
     }
 
+    /**
+     * Removes a repository, record and contents alike.
+     *
+     * <p>Deleting only the row left every object on disk with nothing pointing
+     * at it — invisible, unreachable, and permanent. What {@link #create} put
+     * there, this takes away.
+     *
+     * <p>The row goes first and the storage after. The database is what decides
+     * whether a repository exists, so if the deletion fails partway the surviving
+     * state is a directory nobody can reach, which is what the old behaviour left
+     * every time. The other order risks the opposite and worse: a row whose
+     * storage is gone, which reads as an existing repository that has lost its
+     * history — and would be silently re-created empty by the self-healing open.
+     *
+     * <p>For the same reason a storage failure does not fail the request. The
+     * repository is gone as far as every caller is concerned, and turning that
+     * into an error would report a deletion that did in fact happen as one that
+     * did not. It is logged instead, which is what a later sweep would need.
+     */
     @Transactional
     public void delete(UUID repoId, User viewer) {
         Repo repo = requireWritable(repoId, viewer);
+        RepositoryId storageId = RepositoryId.of(repo.getId().toString());
+
         repoRepository.delete(repo);
+
+        try {
+            vcsRepositoryFactory.delete(storageId);
+        } catch (IOException | RuntimeException ex) {
+            log.warn("Deleted repository {} but could not remove its storage; it is now orphaned",
+                    storageId, ex);
+        }
     }
 }

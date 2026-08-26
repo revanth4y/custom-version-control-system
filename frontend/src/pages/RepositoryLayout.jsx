@@ -38,7 +38,7 @@ const RepositoryLayout = () => {
 };
 
 const RepositoryFrame = () => {
-  const { owner, name, repository, loading, error, reload } = useRepository();
+  const { owner, name, repository, loading, error, reload, canWrite } = useRepository();
 
   if (loading && !repository) {
     return <LoadingState label="Loading repository" minHeight="60vh" />;
@@ -62,7 +62,7 @@ const RepositoryFrame = () => {
   return (
     <Box>
       <RepoHeader repository={repository} />
-      <RepoNav owner={owner} name={name} />
+      <RepoNav owner={owner} name={name} canWrite={canWrite} />
       <Outlet />
     </Box>
   );

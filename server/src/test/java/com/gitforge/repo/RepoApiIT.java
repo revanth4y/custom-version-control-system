@@ -3,6 +3,9 @@ package com.gitforge.repo;
 import com.gitforge.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -153,6 +156,59 @@ class RepoApiIT extends AbstractIntegrationTest {
 
         mockMvc.perform(get("/api/v1/repositories/octocat/portfolio"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deletingARepositoryRemovesItsStorageAndNoOneElses() throws Exception {
+        String token = registerAndLogin("octocat");
+        String doomedId = idOf(createRepo(token, "doomed", "PUBLIC"));
+        String keptId = idOf(createRepo(token, "kept", "PUBLIC"));
+
+        // Something worth losing: an empty repository would pass a weaker test
+        // by having little on disk to begin with.
+        mockMvc.perform(post("/api/v1/repositories/octocat/doomed/commits")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("""
+                                {"branch":"main","message":"Add a file","changes":[
+                                  {"operation":"PUT","path":"README.md","content":"# doomed\\n"}]}
+                                """))
+                .andExpect(status().isCreated());
+
+        Path doomed = STORAGE_ROOT.resolve(doomedId);
+        Path kept = STORAGE_ROOT.resolve(keptId);
+        assertThat(doomed).isDirectory();
+        assertThat(kept).isDirectory();
+
+        mockMvc.perform(delete("/api/v1/repositories/" + doomedId)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isNoContent());
+
+        /* The record going was never the question; the objects staying behind
+           was. Nothing points at them once the row is gone, so they could not be
+           found again to be removed later. */
+        assertThat(doomed).doesNotExist();
+
+        // The storage id is the repository's own UUID, so deleting one cannot
+        // reach another's directory.
+        assertThat(kept).isDirectory();
+        mockMvc.perform(get("/api/v1/repositories/octocat/kept")).andExpect(status().isOk());
+    }
+
+    @Test
+    void aRefusedDeleteLeavesStorageAlone() throws Exception {
+        String owner = registerAndLogin("octocat");
+        String repoId = idOf(createRepo(owner, "portfolio", "PUBLIC"));
+        String stranger = registerAndLogin("hubot");
+
+        mockMvc.perform(delete("/api/v1/repositories/" + repoId)
+                        .header("Authorization", bearer(stranger)))
+                .andExpect(status().isForbidden());
+
+        // Authorization is checked before anything is removed, so a refusal
+        // costs the repository nothing.
+        assertThat(STORAGE_ROOT.resolve(repoId)).isDirectory();
+        mockMvc.perform(get("/api/v1/repositories/octocat/portfolio")).andExpect(status().isOk());
     }
 
     @Test
