@@ -336,11 +336,37 @@ A rejected commit writes no object and moves no branch.
 `ref` optional, `limit` optional — **clamped to 200**, default 30. Returns an
 array, newest first. There is no cursor.
 
-History cannot be filtered by path: sending `path` is a **400**. The parameter
-is refused rather than ignored, because silently returning the whole branch
-would be indistinguishable from a file that changed in every commit. To learn
-which commit last touched an entry, read `lastCommit` from the tree listing
-with `withLastCommit=true`.
+`path` optional: the commits that touched one file or directory, newest first.
+A directory counts as touched when anything beneath it changed. Leading and
+trailing slashes are ignored, and a blank path is the repository root — whose
+history is the whole history, not an error.
+
+Two bounds apply when filtering, and they are not the same one. `limit` is how
+many matching commits come back; the search itself looks back through **200**
+commits from the revision. They have to differ: a file touched once, eighty
+commits ago, would otherwise be reported as having no history because the last
+thirty commits happened not to mention it.
+
+So an empty array means **not touched within those 200 commits** — never "this
+path has no history". A path that never existed answers the same way, and a
+`404` is reserved for a repository you cannot read.
+
+Two limits are worth stating plainly:
+
+- **History stops at a rename.** There is no rename detection, so a move is a
+  delete of one path and an addition of another, and nothing pairs them. The new
+  path's history begins at the move.
+- **A deleted file keeps its history.** The commit that removed it touched that
+  path, so it heads the list rather than emptying it.
+
+For the single most recent commit against every entry in a directory, the tree
+listing with `withLastCommit=true` still answers in one request and is the
+cheaper question to ask.
+
+Every commit in these responses carries both signatures — `authorName`,
+`authorEmail`, `timestamp`, and `committerName`, `committerEmail`,
+`committerTimestamp`. The stored object holds two, and the engine allows them to
+differ; commits written through this API set them the same.
 
 ### `GET /repositories/{owner}/{name}/commits/{sha}` · anonymous
 

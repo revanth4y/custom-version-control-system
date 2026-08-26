@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Box, Button, Text } from "@primer/react";
+import RouterLink from "../common/RouterLink";
 import Octicon from "../common/Octicon";
-import { CheckIcon, CopyIcon } from "@primer/octicons-react";
+import { CheckIcon, CopyIcon, HistoryIcon } from "@primer/octicons-react";
 
 /**
  * The controls in a file's header: how to read it, and how to take it away.
@@ -17,8 +18,12 @@ import { CheckIcon, CopyIcon } from "@primer/octicons-react";
  * source there is nothing to toggle to, and for a binary file there is no text
  * to reveal — inventing one would mean printing bytes as characters, which is
  * the thing the binary state exists to prevent.
+ *
+ * "History" is a link rather than a toggle, because it genuinely goes somewhere:
+ * the commit listing narrowed to this path. It is offered for binary files too —
+ * a file that cannot be displayed still has a history worth reading.
  */
-const BlobActions = ({ canToggleRaw, raw, onToggleRaw, copyText }) => {
+const BlobActions = ({ canToggleRaw, raw, onToggleRaw, copyText, historyTo }) => {
   const [copied, setCopied] = useState(false);
 
   /* The confirmation is temporary, and the timer has to be cleared: navigating
@@ -42,6 +47,21 @@ const BlobActions = ({ canToggleRaw, raw, onToggleRaw, copyText }) => {
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+      {historyTo && (
+        <Button
+          as={RouterLink}
+          to={historyTo}
+          size="small"
+          variant="invisible"
+          sx={{ color: "fg.muted" }}
+        >
+          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+            <Octicon icon={HistoryIcon} size={14} />
+            <Text sx={{ fontSize: 0, display: ["none", "inline"] }}>History</Text>
+          </Box>
+        </Button>
+      )}
+
       {canToggleRaw && (
         <Button
           size="small"

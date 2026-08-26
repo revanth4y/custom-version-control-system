@@ -325,7 +325,8 @@ holds up to the cap and not past it. Longer histories need a real cursor.
 
 **No rename detection.** A renamed file appears as a delete and an add. Pairing
 them means comparing content similarity across both sides, which the tree differ
-does not attempt.
+does not attempt. A file's history therefore stops at the rename: asking for the
+new path returns the commit that added it and nothing earlier.
 
 **Merges resolve at file level, not line level.** A conflict tells you the path,
 the kind, and the object on each side. It does not write conflict markers into

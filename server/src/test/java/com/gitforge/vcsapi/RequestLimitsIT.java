@@ -174,19 +174,11 @@ class RequestLimitsIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void historyCannotBeFilteredByPathAndSaysSo() throws Exception {
-        /* An undeclared parameter is dropped silently, so this used to answer
-           200 with the whole branch's history and no sign the filter had been
-           ignored. */
-        mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits").param("path", "README.md"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
-                .andExpect(jsonPath("$.message").value(Matchers.containsString("path")));
-    }
-
-    @Test
     void historyWithoutAPathIsUnchanged() throws Exception {
-        // The guard must be invisible to every caller that does not ask for it.
+        /* Path filtering answers history now rather than refusing it, so the
+           refusal this class used to assert has moved on; what it protected is
+           now covered by the path-history tests. What still belongs here is that
+           the unfiltered listing is untouched by any of it. */
         mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].sha").value(headSha()));

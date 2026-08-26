@@ -125,13 +125,51 @@ public class CommitApiService {
         return CommitSummaryResponse.from(repository.objects().readCommit(commitId));
     }
 
-    public List<CommitSummaryResponse> history(String owner, String name, User viewer, String ref, Integer limit) {
+    /**
+     * History reachable from a revision, optionally narrowed to one path.
+     *
+     * <p>Without a path this returns the {@code limit} most recent commits, and
+     * limit is the only bound that matters. With one, the search looks back
+     * through {@link #MAX_HISTORY} commits and returns the matches, up to limit.
+     * The window has to be the wider of the two: a file touched once, long ago,
+     * is still part of that file's history, and answering "no history" because
+     * the last thirty commits did not mention it would be wrong in exactly the
+     * way a reader could not detect.
+     *
+     * <p>The path is not checked for existence. A deleted file has history —
+     * the commit that removed it touched that path — and demanding the path
+     * exist at the revision would hide it.
+     */
+    public List<CommitSummaryResponse> history(
+            String owner, String name, User viewer, String ref, Integer limit, String path) {
+
         VcsRepository repository = repositories.forRead(owner, name, viewer);
 
         int bounded = Math.clamp(limit == null ? 30 : limit, 1, MAX_HISTORY);
-        return repository.reader().history(revisionOrHead(ref), bounded).stream()
-                .map(CommitSummaryResponse::from)
-                .toList();
+        String target = normalisePath(path);
+
+        List<Commit> commits = target.isEmpty()
+                ? repository.reader().history(revisionOrHead(ref), bounded)
+                : repository.reader().historyForPath(revisionOrHead(ref), target, bounded, MAX_HISTORY);
+
+        return commits.stream().map(CommitSummaryResponse::from).toList();
+    }
+
+    /**
+     * A path as the engine expects it: no surrounding whitespace, no leading or
+     * trailing slashes.
+     *
+     * <p>{@code /src/} and {@code src} name the same directory to anyone typing
+     * a path, but only the second matches what the differ reports, so the
+     * difference has to be removed here rather than surprise the caller. What
+     * normalises to nothing is the repository root, whose history is the whole
+     * history — not an error, and not a filter that silently matches nothing.
+     */
+    private static String normalisePath(String path) {
+        if (path == null) {
+            return "";
+        }
+        return path.trim().replaceAll("^/+", "").replaceAll("/+$", "");
     }
 
     public CommitDetailResponse detail(String owner, String name, User viewer, String sha) {

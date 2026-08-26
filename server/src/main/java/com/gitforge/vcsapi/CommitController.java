@@ -1,6 +1,5 @@
 package com.gitforge.vcsapi;
 
-import com.gitforge.common.error.BadRequestException;
 import com.gitforge.security.AuthenticatedUser;
 import com.gitforge.user.User;
 import com.gitforge.vcsapi.dto.CommitDetailResponse;
@@ -44,15 +43,13 @@ public class CommitController {
     }
 
     /**
-     * History reachable from a revision.
+     * History reachable from a revision, optionally for one path.
      *
-     * <p>{@code path} is declared only so it can be refused. History filtered to
-     * one path is not implemented, and an undeclared parameter is silently
-     * dropped by the framework - so asking for it returned the whole branch's
-     * history with a 200 and no sign that the filter had been ignored. Answering
-     * confidently with the wrong commits is worse than not answering: a caller
-     * cannot tell the difference, and a file that changed once would appear to
-     * have changed in every commit since. Saying so plainly costs one parameter.
+     * <p>{@code path} was refused outright until this version, because the
+     * parameter had been silently dropped and the endpoint answered with the
+     * whole branch's history whatever file you named — confidently wrong in a
+     * way no caller could detect. It now does what it says: the commits that
+     * touched that file or directory, newest first.
      *
      * <p>Callers that do not send it are unaffected.
      */
@@ -65,12 +62,7 @@ public class CommitController {
             @RequestParam(required = false) String path,
             @AuthenticationPrincipal AuthenticatedUser principal) {
 
-        if (path != null) {
-            throw new BadRequestException(
-                    "History cannot be filtered by path. Omit 'path' for the history of a revision, "
-                            + "or read which commit last touched an entry from the tree listing.");
-        }
-        return commits.history(owner, name, viewerOf(principal), ref, limit);
+        return commits.history(owner, name, viewerOf(principal), ref, limit, path);
     }
 
     @GetMapping("/commits/{sha}")
