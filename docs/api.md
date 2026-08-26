@@ -189,6 +189,13 @@ Paginated: `page`, `size`. Returns public repositories.
 
 Owner only. **403** if you can read it but do not own it.
 
+`DELETE` answers **204** and removes the repository entirely: the record, its
+issues and comments, and **the repository's object-store directory**. Storage
+is keyed by the repository id, so nothing else is touched and a rename never
+moved it in the first place. The record is removed first, so should the
+directory survive a failure it is unreachable rather than half-attached to a
+repository that still appears to exist.
+
 ---
 
 ## Contents
