@@ -1,5 +1,6 @@
-import { Link as RouterLink } from "react-router-dom";
-import { Box, Link, Octicon, Text } from "@primer/react";
+import RouterLink from "../common/RouterLink";
+import { Box, Link, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { FileDirectoryFillIcon, FileIcon, FileSymlinkFileIcon } from "@primer/octicons-react";
 
 import { EmptyState } from "../common/states";

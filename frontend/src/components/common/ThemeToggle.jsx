@@ -1,4 +1,5 @@
-import { ActionList, ActionMenu, Box, Octicon } from "@primer/react";
+import { ActionList, ActionMenu, Box } from "@primer/react";
+import Octicon from "./Octicon";
 import { DeviceDesktopIcon, MoonIcon, SunIcon } from "@primer/octicons-react";
 
 import { useColorModeContext } from "../../context/useColorModeContext";

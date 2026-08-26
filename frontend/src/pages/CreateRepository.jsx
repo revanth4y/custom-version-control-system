@@ -10,8 +10,8 @@ import {
   Textarea,
   Radio,
   RadioGroup,
-  Octicon,
 } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { RepoIcon, LockIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";

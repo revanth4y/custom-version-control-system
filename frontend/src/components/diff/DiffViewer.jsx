@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Box, Text, Octicon } from "@primer/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Box, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { FileDiffIcon } from "@primer/octicons-react";
 
 import FileDiff from "./FileDiff";
@@ -15,7 +16,11 @@ import { anchorFor, pathFromAnchor, summarise } from "../../utils/diff";
  * contents.
  */
 const DiffViewer = ({ result }) => {
-  const files = result?.files ?? [];
+  /* Memoised so the identity is stable between renders. `?? []` builds a new
+     array every pass, and the effect below depends on it — without this the
+     effect re-ran on every render rather than when the files actually
+     changed. */
+  const files = useMemo(() => result?.files ?? [], [result]);
   const counts = summarise(files);
   const [activePath, setActivePath] = useState(() => pathFromAnchor(window.location.hash.slice(1)));
 

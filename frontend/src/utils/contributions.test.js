@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   INTENSITY_LEVELS,
@@ -140,9 +140,39 @@ describe("monthLabels", () => {
   });
 });
 
+/**
+ * Runs `read` with the ambient locale pinned, and puts it back afterwards.
+ *
+ * `describeDay` formats in whatever locale the reader has, which is right for
+ * the page and useless to assert against: the same call renders "14 March
+ * 2026" here and "March 14, 2026" on an en-US machine, so a test that names
+ * either one passes in one place and fails in the other. Pinning it for the
+ * length of one assertion fixes the wording under test without fixing it for
+ * the application, which still formats dates the reader's way.
+ *
+ * en-US rather than the local rendering because every build of Node can
+ * produce it, including the ones compiled without the full locale data.
+ */
+const withPinnedLocale = (locale, read) => {
+  const format = Date.prototype.toLocaleDateString;
+  const pinned = vi
+    .spyOn(Date.prototype, "toLocaleDateString")
+    .mockImplementation(function pinnedFormat(requested, options) {
+      return format.call(this, requested ?? locale, options);
+    });
+
+  try {
+    return read();
+  } finally {
+    pinned.mockRestore();
+  }
+};
+
 describe("describeDay", () => {
   it("says the count and the date in words", () => {
-    expect(describeDay({ date: "2026-03-14", count: 3 })).toMatch(/^3 commits on 14 March 2026$/);
+    const said = withPinnedLocale("en-US", () => describeDay({ date: "2026-03-14", count: 3 }));
+
+    expect(said).toBe("3 commits on March 14, 2026");
   });
 
   it("uses the singular for one", () => {

@@ -198,6 +198,33 @@ class RepositoryContentApiIT extends AbstractIntegrationTest {
         }
 
         @Test
+        void readsAFileWithFarMoreLinesThanUsualWithoutTruncatingIt() throws Exception {
+            token = registerAndLogin("octocat");
+            createRepo(token, "demo", "PUBLIC");
+
+            // Past the point where the blob view stops numbering lines, which is
+            // the size at which a response would start being tempting to trim.
+            StringBuilder text = new StringBuilder();
+            for (int i = 1; i <= 5_001; i++) {
+                text.append("line ").append(i).append('\n');
+            }
+            String content = text.toString();
+
+            commit(token, "octocat", "demo", """
+                    {"branch":"main","message":"Add a long file","changes":[
+                      {"operation":"PUT","path":"many-lines.txt","content":"%s"}]}
+                    """.formatted(content.replace("\n", "\\n")));
+
+            mockMvc.perform(get("/api/v1/repositories/octocat/demo/blob").param("path", "many-lines.txt"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.binary").value(false))
+                    .andExpect(jsonPath("$.encoding").value("utf-8"))
+                    .andExpect(jsonPath("$.size").value(48_903))
+                    // Whole, first line to last - not a prefix of it.
+                    .andExpect(jsonPath("$.content").value(content));
+        }
+
+        @Test
         void readingADirectoryOrAMissingFileIsNotFound() throws Exception {
             seedRepository();
 

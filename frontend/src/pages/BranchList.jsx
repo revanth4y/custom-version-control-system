@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Box, Button, Heading, Text, TextInput, Select, Octicon, Link } from "@primer/react";
+import { Box, Button, Heading, Text, TextInput, Select, Link } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { GitBranchIcon, GitMergeIcon, PlusIcon, SearchIcon, TrashIcon } from "@primer/octicons-react";
-import { Link as RouterLink } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";

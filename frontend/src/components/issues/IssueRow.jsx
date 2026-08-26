@@ -1,6 +1,7 @@
-import { Link as RouterLink } from "react-router-dom";
-import { Box, Link, Text, Octicon } from "@primer/react";
-import { CheckIcon, CommentIcon, IssueOpenedIcon } from "@primer/octicons-react";
+import RouterLink from "../common/RouterLink";
+import { Box, Link, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
+import { CheckIcon, IssueOpenedIcon } from "@primer/octicons-react";
 
 import { IssueStatus, authorLabel } from "../../utils/issues";
 import { formatAbsoluteTime, formatRelativeTime } from "../../utils/dates";

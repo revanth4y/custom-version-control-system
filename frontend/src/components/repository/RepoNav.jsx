@@ -1,5 +1,7 @@
-import { Link as RouterLink, useLocation } from "react-router-dom";
-import { Box, Text, Octicon } from "@primer/react";
+import { useLocation } from "react-router-dom";
+import RouterLink from "../common/RouterLink";
+import { Box, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import {
   CodeIcon,
   GitCommitIcon,

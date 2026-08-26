@@ -1,4 +1,4 @@
-import { Link as RouterLink } from "react-router-dom";
+import RouterLink from "../common/RouterLink";
 import { Box, Text } from "@primer/react";
 
 import BrandMark from "../common/BrandMark";

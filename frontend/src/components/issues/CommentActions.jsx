@@ -1,4 +1,5 @@
-import { ActionList, ActionMenu, Box, Octicon } from "@primer/react";
+import { ActionList, ActionMenu, Box } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { KebabHorizontalIcon, PencilIcon, TrashIcon } from "@primer/octicons-react";
 
 /**

@@ -1,5 +1,7 @@
-import { Link as RouterLink, useParams } from "react-router-dom";
-import { Box, Heading, Label, Link, Text, Octicon } from "@primer/react";
+import { useParams } from "react-router-dom";
+import RouterLink from "../components/common/RouterLink";
+import { Box, Heading, Label, Link, Text } from "@primer/react";
+import Octicon from "../components/common/Octicon";
 import { GitCommitIcon, GitMergeIcon, FileDirectoryIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";

@@ -1,7 +1,8 @@
-import { Box, Text, Octicon } from "@primer/react";
+import { Box, Text } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { DiffAddedIcon, DiffModifiedIcon, DiffRemovedIcon } from "@primer/octicons-react";
 
-import { FileState, anchorFor, fileState, splitPath } from "../../utils/diff";
+import { FileState, fileState, splitPath } from "../../utils/diff";
 
 const STATUS_ICON = {
   ADDED: { icon: DiffAddedIcon, color: "success.fg" },
@@ -122,5 +123,4 @@ const FileDiffList = ({ files, activePath, onSelect }) => (
   </Box>
 );
 
-export { anchorFor };
 export default FileDiffList;

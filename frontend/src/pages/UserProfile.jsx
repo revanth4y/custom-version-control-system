@@ -1,6 +1,7 @@
-import { Link as RouterLink, useParams } from "react-router-dom";
-import { Box, Heading, Label, Link, Text, Octicon } from "@primer/react";
-import { LockIcon, PersonIcon, RepoIcon } from "@primer/octicons-react";
+import { useParams } from "react-router-dom";
+import { Box, Heading, Text } from "@primer/react";
+import Octicon from "../components/common/Octicon";
+import { PersonIcon, RepoIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";

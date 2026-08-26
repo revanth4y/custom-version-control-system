@@ -7,8 +7,8 @@ import {
   Spinner,
   Text,
   TextInput,
-  Octicon,
 } from "@primer/react";
+import Octicon from "../common/Octicon";
 import {
   GitBranchIcon,
   AlertIcon,

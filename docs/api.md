@@ -38,7 +38,7 @@ UUID.** That asymmetry is real and a client has to carry both.
 | 404 | `NOT_FOUND` | Absent — or present and not yours to see |
 | 405 | `METHOD_NOT_ALLOWED` | With an `Allow` header |
 | 409 | `CONFLICT` | Name already taken |
-| 413 | `PAYLOAD_TOO_LARGE` | Body over 16 MB |
+| 413 | `PAYLOAD_TOO_LARGE` | A request body over 16 MB, or a file over 10 MB asked for by `GET /blob` |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | With an `Accept` header |
 | 429 | `TOO_MANY_REQUESTS` | With a `Retry-After` header |
 | 500 | `STORAGE_ERROR` | An object could not be read |
@@ -247,6 +247,11 @@ was before the parameter existed.
 
 `path` is **required** — omitting it is a 400. `ref` is optional.
 
+A file over **10 MB** is refused with **413** `PAYLOAD_TOO_LARGE` rather than
+returned. It is the same bound every write is held to, so nothing this API
+accepted can become unreadable through it; content that large can only have
+been written underneath the API.
+
 ```json
 {
   "path": "README.md",
@@ -264,7 +269,9 @@ byte that decodes strictly as UTF-8 — the same rule the differ applies.
 
 ### `PUT /repositories/{owner}/{name}/contents`
 
-Writes one file as one commit. Owner only.
+Writes one file as one commit. Owner only. The **10 MB** limit on a single
+file applies here exactly as it does to `POST /commits`, and a file over it is
+a **400** having written nothing.
 
 ```json
 { "branch": "main", "message": "Update the README", "path": "README.md", "content": "...", "encoding": "utf-8", "mode": "100644" }
@@ -295,7 +302,7 @@ before anything is written:
 | Limit | Value | Failure |
 |---|---|---|
 | Request body | 16 MB | **413** |
-| One file | 10 MB | **400** |
+| One file | 10 MB | **400** on `POST /commits` and `PUT /contents`; **413** reading it back |
 | One commit, total | 12 MB | **400** |
 | Changes per commit | 500 | **400** |
 
@@ -321,6 +328,12 @@ A rejected commit writes no object and moves no branch.
 
 `ref` optional, `limit` optional — **clamped to 200**, default 30. Returns an
 array, newest first. There is no cursor.
+
+History cannot be filtered by path: sending `path` is a **400**. The parameter
+is refused rather than ignored, because silently returning the whole branch
+would be indistinguishable from a file that changed in every commit. To learn
+which commit last touched an entry, read `lastCommit` from the tree listing
+with `withLastCommit=true`.
 
 ### `GET /repositories/{owner}/{name}/commits/{sha}` · anonymous
 

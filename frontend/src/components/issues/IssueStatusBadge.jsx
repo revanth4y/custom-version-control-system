@@ -1,4 +1,5 @@
-import { Box, Octicon } from "@primer/react";
+import { Box } from "@primer/react";
+import Octicon from "../common/Octicon";
 import { CheckIcon, IssueOpenedIcon } from "@primer/octicons-react";
 
 import { IssueStatus } from "../../utils/issues";

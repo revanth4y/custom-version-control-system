@@ -1,4 +1,5 @@
-import { Box, Spinner, Text, Heading, Button, Octicon } from "@primer/react";
+import { Box, Spinner, Text, Heading, Button } from "@primer/react";
+import Octicon from "./Octicon";
 import { AlertIcon, InboxIcon, SyncIcon } from "@primer/octicons-react";
 
 /**

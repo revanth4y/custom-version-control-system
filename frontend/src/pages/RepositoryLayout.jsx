@@ -7,6 +7,7 @@ import RepoHeader from "../components/repository/RepoHeader";
 import RepoNav from "../components/repository/RepoNav";
 import PageContainer from "../components/layout/PageContainer";
 import { ErrorState, LoadingState } from "../components/common/states";
+import { repositoryKey } from "../utils/repositoryState";
 
 /**
  * The frame every repository page sits inside.
@@ -17,8 +18,20 @@ import { ErrorState, LoadingState } from "../components/common/states";
 const RepositoryLayout = () => {
   const { username, repo } = useParams();
 
+  /* Keyed by the repository being viewed, so moving to a different one remounts
+     rather than re-renders.
+     Without the key the provider went on serving the previous repository's
+     metadata while its children re-rendered against the new owner and name.
+     Three things followed, all of them observable: requests for the new
+     repository were issued before its metadata had resolved, a stale README
+     path was fetched from the repository just left, and a repository that does
+     not exist never showed its error — the gates test `!repository`, and
+     `repository` still held the previous one, so neither the loading nor the
+     error branch was ever reached and the old page simply stayed on screen.
+     Remounting resets that state to null, which is what those gates were
+     written to expect. */
   return (
-    <RepositoryProvider owner={username} name={repo}>
+    <RepositoryProvider key={repositoryKey(username, repo)} owner={username} name={repo}>
       <RepositoryFrame />
     </RepositoryProvider>
   );
