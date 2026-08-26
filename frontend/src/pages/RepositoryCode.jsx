@@ -30,7 +30,7 @@ const README_NAMES = ["README.md", "readme.md", "README", "readme", "README.mark
  * names.
  */
 const RepositoryCode = () => {
-  const { owner, name, head, canWrite, reloadHead } = useRepository();
+  const { owner, name, head, canWrite, reloadHead, repository } = useRepository();
   const params = useParams();
   const navigate = useNavigate();
 
@@ -215,7 +215,7 @@ const RepositoryCode = () => {
         {/* Root only: the figures describe the repository, not the folder. */}
         {!path && (
           <Box sx={{ minWidth: 0 }}>
-            <RepositoryMeta insights={insights.data} />
+            <RepositoryMeta insights={insights.data} repository={repository} />
           </Box>
         )}
       </Box>

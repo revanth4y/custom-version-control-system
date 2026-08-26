@@ -9,6 +9,7 @@ import com.gitforge.vcs.storage.ObjectStore;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 
 /**
  * Creates and opens repositories beneath a single storage root.
@@ -83,6 +84,41 @@ public final class VcsRepositoryFactory {
 
     public boolean exists(RepositoryId id) {
         return Files.isRegularFile(pathFor(id).resolve("HEAD"));
+    }
+
+    /**
+     * Removes one repository's storage entirely.
+     *
+     * <p>The counterpart to {@link #initialise}: what that created, this takes
+     * away, so a deleted repository stops occupying disk instead of leaving its
+     * objects behind with nothing pointing at them.
+     *
+     * <p>The path comes from {@link #pathFor}, so the same guard that stops an
+     * id reaching outside the storage root applies here — where it matters most,
+     * because this call deletes what it is given.
+     *
+     * <p>Absence is success. Deleting a repository whose storage was never
+     * created, or has already been removed, is not an error: the caller wanted
+     * it gone, and it is.
+     *
+     * @return true if a directory was removed, false if there was nothing there
+     * @throws IOException if the directory exists but could not be removed
+     */
+    public boolean delete(RepositoryId id) throws IOException {
+        Path root = pathFor(id);
+        if (!Files.isDirectory(root)) {
+            return false;
+        }
+
+        try (var paths = Files.walk(root)) {
+            // Deepest first, so every directory is empty by the time it is
+            // reached. Collected before deleting: the walk is lazy, and removing
+            // entries from underneath it is not something to rely on.
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
+        return true;
     }
 
     /** The directory holding one repository's storage. */

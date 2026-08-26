@@ -31,6 +31,7 @@ const MergePage = lazy(() => import("../pages/MergePage"));
 const NewIssue = lazy(() => import("../pages/NewIssue"));
 const RepositoryCode = lazy(() => import("../pages/RepositoryCode"));
 const RepositoryIssues = lazy(() => import("../pages/RepositoryIssues"));
+const RepositorySettings = lazy(() => import("../pages/RepositorySettings"));
 const Signup = lazy(() => import("../pages/Signup"));
 const UserProfile = lazy(() => import("../pages/UserProfile"));
 
@@ -110,6 +111,10 @@ const AppRoutes = () =>
             { path: "commit/:sha", element: <CommitDetail /> },
             { path: "compare", element: <Compare /> },
             { path: "insights", element: <Insights /> },
+            // Owner-only in the interface; the server refuses a stranger's
+            // write regardless, so the page is a convenience rather than the
+            // control.
+            { path: "settings", element: <RepositorySettings /> },
             // Read-only for anyone; the merge control itself is the owner's,
             // and the server refuses the write regardless.
             { path: "merge", element: <MergePage /> },
