@@ -1,6 +1,7 @@
 import { Box, Heading, Text } from "@primer/react";
 
 import IdentityAvatar from "../common/IdentityAvatar";
+import { formatAbsoluteTime, formatRelativeTime } from "../../utils/dates";
 
 /**
  * What this repository is made of, from `/insights`.
@@ -15,7 +16,7 @@ import IdentityAvatar from "../common/IdentityAvatar";
  * language is detected, and a LICENSE file is a file rather than parsed
  * metadata. They are omitted rather than filled with plausible numbers.
  */
-const RepositoryMeta = ({ insights }) => {
+const RepositoryMeta = ({ insights, repository }) => {
   if (!insights) return null;
 
   const figures = [
@@ -57,6 +58,16 @@ const RepositoryMeta = ({ insights }) => {
             </Box>
           ))}
         </Box>
+
+        {/* The two dates the repository record has carried all along and the
+            overview never showed. Relative to read at a glance, exact in the
+            title for when the glance is not enough. */}
+        {repository && (
+          <Box sx={{ display: "grid", gap: 2, mt: 3, pt: 3, borderTop: "1px solid", borderColor: "border.muted" }}>
+            <Timestamp label="Created" at={repository.createdAt} />
+            <Timestamp label="Updated" at={repository.updatedAt} />
+          </Box>
+        )}
       </Box>
 
       {contributors.length > 0 && (
@@ -101,6 +112,20 @@ const RepositoryMeta = ({ insights }) => {
           </Box>
         </Box>
       )}
+    </Box>
+  );
+};
+
+/** A date the reader can take in, with the precise one a hover away. */
+const Timestamp = ({ label, at }) => {
+  if (!at) return null;
+
+  return (
+    <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 3 }}>
+      <Text sx={{ fontSize: 0, color: "fg.muted" }}>{label}</Text>
+      <Text sx={{ fontSize: 0, color: "fg.default" }} title={formatAbsoluteTime(at)}>
+        {formatRelativeTime(at)}
+      </Text>
     </Box>
   );
 };

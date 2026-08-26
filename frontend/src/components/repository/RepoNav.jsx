@@ -6,6 +6,7 @@ import {
   CodeIcon,
   GitCommitIcon,
   GitBranchIcon,
+  GearIcon,
   GraphIcon,
   IssueOpenedIcon,
 } from "@primer/octicons-react";
@@ -33,6 +34,13 @@ const TABS = [
 ];
 
 /**
+ * Shown only to the owner, because it is the only tab where nothing on it is
+ * theirs to use. A visitor seeing "Settings" and being refused on arrival is
+ * worse than not offering it; the server refuses the writes either way.
+ */
+const OWNER_TAB = { key: "settings", label: "Settings", icon: GearIcon, path: "settings" };
+
+/**
  * Sections that belong to a tab without being named after it: a single commit
  * and a comparison are places you arrive at from the history, and merging is
  * reached from the branches.
@@ -46,13 +54,15 @@ const SECTION_TAB = {
   merge: "branches",
 };
 
-const RepoNav = ({ owner, name }) => {
+const RepoNav = ({ owner, name, canWrite = false }) => {
   const location = useLocation();
+
+  const tabs = canWrite ? [...TABS, OWNER_TAB] : TABS;
 
   const base = `/${owner}/${name}`;
   const rest = location.pathname.slice(base.length).replace(/^\//, "");
   const section = rest.split("/")[0] ?? "";
-  const active = TABS.find((tab) => tab.path && tab.path === section)?.key ?? SECTION_TAB[section] ?? "code";
+  const active = tabs.find((tab) => tab.path && tab.path === section)?.key ?? SECTION_TAB[section] ?? "code";
 
   return (
     <Box
@@ -77,7 +87,7 @@ const RepoNav = ({ owner, name }) => {
             "&::-webkit-scrollbar": { display: "none" },
           }}
         >
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const current = tab.key === active;
             return (
               <Box
