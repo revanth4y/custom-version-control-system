@@ -107,6 +107,11 @@ public final class ExplodingObjectStore implements ObjectStore {
     }
 
     @Override
+    public List<ObjectId> findByPrefix(String hexPrefix) {
+        return delegate.findByPrefix(hexPrefix);
+    }
+
+    @Override
     public List<ObjectId> listIds() {
         return delegate.listIds();
     }

@@ -26,6 +26,7 @@ public final class CountingObjectStore implements ObjectStore {
     private final ObjectStore delegate;
     private final List<ObjectId> reads = new ArrayList<>();
     private final List<ObjectId> writes = new ArrayList<>();
+    private final List<String> prefixSearches = new ArrayList<>();
 
     public CountingObjectStore(ObjectStore delegate) {
         this.delegate = delegate;
@@ -35,6 +36,7 @@ public final class CountingObjectStore implements ObjectStore {
     public void resetCounts() {
         reads.clear();
         writes.clear();
+        prefixSearches.clear();
     }
 
     public int readCount() {
@@ -43,6 +45,16 @@ public final class CountingObjectStore implements ObjectStore {
 
     public int writeCount() {
         return writes.size();
+    }
+
+    /**
+     * How many prefix searches were run since the last reset.
+     *
+     * <p>Also a claim about work not done: resolving a full id must not go
+     * looking through a directory for something it already has in hand.
+     */
+    public int prefixSearchCount() {
+        return prefixSearches.size();
     }
 
     /** Every id read since the last reset, in order. */
@@ -102,6 +114,12 @@ public final class CountingObjectStore implements ObjectStore {
     @Override
     public long count() {
         return delegate.count();
+    }
+
+    @Override
+    public List<ObjectId> findByPrefix(String hexPrefix) {
+        prefixSearches.add(hexPrefix);
+        return delegate.findByPrefix(hexPrefix);
     }
 
     @Override

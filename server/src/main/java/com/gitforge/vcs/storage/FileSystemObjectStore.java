@@ -16,6 +16,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -187,6 +188,36 @@ public final class FileSystemObjectStore implements ObjectStore {
                     .toList();
         } catch (IOException ex) {
             throw new ObjectStoreException("Could not enumerate objects in " + objectsRoot, ex);
+        }
+    }
+
+    @Override
+    public List<ObjectId> findByPrefix(String hexPrefix) {
+        String prefix = ObjectId.normalisePrefix(hexPrefix);
+
+        // The shard is the first two characters, so it is the only directory
+        // that can hold a match. A prefix shorter than the shard cannot happen:
+        // the minimum prefix length is above it.
+        Path shard = objectsRoot.resolve(prefix.substring(0, SHARD_LENGTH));
+        if (!Files.isDirectory(shard)) {
+            return List.of();
+        }
+
+        String remainder = prefix.substring(SHARD_LENGTH);
+        try (Stream<Path> files = Files.list(shard)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> !name.startsWith(TEMP_PREFIX))
+                    .filter(name -> name.startsWith(remainder))
+                    .map(name -> ObjectId.fromHex(prefix.substring(0, SHARD_LENGTH) + name))
+                    // Ordered so an ambiguous answer names its candidates the
+                    // same way twice running; a directory listing does not
+                    // promise that on its own.
+                    .sorted(Comparator.comparing(ObjectId::toHex))
+                    .toList();
+        } catch (IOException ex) {
+            throw new ObjectStoreException("Could not search objects under " + shard, ex);
         }
     }
 
