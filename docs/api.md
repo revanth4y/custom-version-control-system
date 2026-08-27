@@ -16,6 +16,37 @@ sees exactly what a stranger is allowed to see.
 `number`. **Writes to issues, comments and repository metadata address it by
 UUID.** That asymmetry is real and a client has to carry both.
 
+**Revisions** are written as `HEAD`, a branch name, a full 40-character object
+id, or an unambiguous abbreviation of one — at least **4** hexadecimal
+characters, in either case. Wherever a full id is accepted, an abbreviation is
+too: `ref`, `base`, `head`, a branch `startPoint`, and the `{sha}` in a commit
+path.
+
+A branch name always wins. A branch called `abcd` resolves to what it points at,
+never to the object whose id begins `abcd`, because a name that happens to look
+like a hash is still a name someone chose.
+
+| What you wrote | Answer |
+|---|---|
+| Full id, stored | the object |
+| Full id, not stored | **404** |
+| 4–39 hex, exactly one match | the object |
+| 4–39 hex, no match | **404** |
+| 4–39 hex, several matches | **409** — see below |
+| Fewer than 4 characters | **400** |
+| Not hexadecimal | **400** as a `{sha}`; treated as an unknown branch name as a `ref` |
+
+An abbreviation that matches more than one object is a **409**, and the message
+names the collisions rather than leaving you to guess how much longer to make it:
+
+```
+Object id prefix 'a1b2' is ambiguous: 3 objects match
+(a1b2c3d4e5f6, a1b2aa77bb99, a1b2ff00dd11). Use more characters.
+```
+
+Candidates are abbreviated to 12 characters and listed in order; at most five are
+named, and the true total is always stated.
+
 **Errors** all have one shape:
 
 ```json
@@ -348,8 +379,14 @@ commits ago, would otherwise be reported as having no history because the last
 thirty commits happened not to mention it.
 
 So an empty array means **not touched within those 200 commits** — never "this
-path has no history". A path that never existed answers the same way, and a
-`404` is reserved for a repository you cannot read.
+path has no history". A path that never existed answers the same way.
+
+A `ref` that names nothing is a **404**, not an empty array. It used to be the
+latter, which read exactly like a branch nobody had committed to, so a misspelled
+name or an over-shortened id looked like an answer. **One exception:** a
+repository with no commits at all has a HEAD naming a branch that does not exist
+yet — that is what an empty repository is — so asking for that branch answers
+`200 []` rather than 404.
 
 Two limits are worth stating plainly:
 
@@ -370,8 +407,8 @@ differ; commits written through this API set them the same.
 
 ### `GET /repositories/{owner}/{name}/commits/{sha}` · anonymous
 
-The commit and its diff against its first parent. `sha` must be a full 40
-characters; abbreviations are a 400.
+The commit and its diff against its first parent. `sha` is a full 40 characters
+or an unambiguous abbreviation of at least 4; see **Revisions** above.
 
 ### `GET /repositories/{owner}/{name}/commits/{sha}/diff` · anonymous
 

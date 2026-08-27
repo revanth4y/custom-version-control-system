@@ -271,7 +271,6 @@ Honest list, so nothing above reads as more than it is:
 
 - No pack files, no delta compression — one file per object
 - No rename detection
-- No abbreviated object ids; revisions are `HEAD`, a branch name, or a full 40 characters
 - No tags, no remotes, no reflog, no packed-refs
 - No garbage collection
 - No line-level conflict resolution

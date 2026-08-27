@@ -1,5 +1,6 @@
 package com.gitforge.vcs.ref;
 
+import com.gitforge.vcs.object.AmbiguousObjectIdException;
 import com.gitforge.vcs.object.ObjectId;
 import com.gitforge.vcs.storage.ObjectStore;
 
@@ -115,9 +116,21 @@ public final class BranchService {
     /**
      * Resolves a revision to a commit.
      *
-     * <p>Accepts {@code HEAD}, a branch name, or a full 40-character commit id.
-     * A branch name takes precedence over an id, since a name that happens to
-     * look like a hash is still a name the user created.
+     * <p>Accepts {@code HEAD}, a branch name, a full 40-character commit id, or
+     * an unambiguous abbreviation of one.
+     *
+     * <p><strong>Order matters, and it is deliberate.</strong> A branch name
+     * takes precedence over any id, because a name that happens to look like a
+     * hash is still a name the user created — and the exact id is tried before
+     * any abbreviation, so a caller who supplies all forty characters is never
+     * put through a directory search to be told what they already knew.
+     *
+     * <p>An abbreviation that matches nothing is not found, the same as any
+     * other unknown revision. One that matches several is a different situation
+     * and is reported as such: see {@link AmbiguousObjectIdException}.
+     *
+     * @throws AmbiguousObjectIdException if an abbreviation names more than one
+     *     object
      */
     public Optional<ObjectId> resolve(String revision) {
         if (revision == null || revision.isBlank()) {
@@ -134,10 +147,39 @@ public final class BranchService {
         }
         try {
             ObjectId id = ObjectId.fromHex(trimmed);
-            return objectStore.contains(id) ? Optional.of(id) : Optional.empty();
+            if (objectStore.contains(id)) {
+                return Optional.of(id);
+            }
+            // A full-length id that is not stored is simply absent. Falling
+            // through to a prefix search would look it up again to no purpose.
+            return Optional.empty();
         } catch (IllegalArgumentException ex) {
+            // Not a complete id. It may still be the start of one.
+            return resolveAbbreviated(trimmed);
+        }
+    }
+
+    /**
+     * Resolves an abbreviation, if the string could be one.
+     *
+     * <p>Anything too short, or not hexadecimal at all, is left as an unknown
+     * revision rather than an error: the caller may simply have named a branch
+     * that does not exist, and refusing "main" for not being hexadecimal would
+     * be absurd. Length is what separates the two, and four characters is the
+     * floor.
+     */
+    private Optional<ObjectId> resolveAbbreviated(String candidate) {
+        if (!ObjectId.isValidPrefix(candidate)) {
             return Optional.empty();
         }
+        List<ObjectId> matches = objectStore.findByPrefix(candidate);
+        if (matches.isEmpty()) {
+            return Optional.empty();
+        }
+        if (matches.size() > 1) {
+            throw new AmbiguousObjectIdException(candidate, matches);
+        }
+        return Optional.of(matches.getFirst());
     }
 
     /** A malformed name is simply not a branch, rather than an error, when resolving. */

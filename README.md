@@ -36,8 +36,9 @@ counted straight out of the object store.
 
 **The web application.** A repository browser with a light and a dark scheme,
 laid out for a phone as readily as a desktop: browse any revision, read a file
-with its syntax highlighted, and see which commit last touched each path in a
-directory. Every value shown comes from the API.
+with its syntax highlighted, follow one file or directory through the commits
+that touched it, and see which commit last touched each path in a directory.
+Every value shown comes from the API.
 
 ## The engine
 
@@ -86,6 +87,11 @@ questions. **BFS** visits in order of distance, which is what reachability and
 common-ancestor work need. **DFS** follows one line of descent to its end, which
 is what you want when tracing where a change came from. Ancestry (`isAncestor`)
 short-circuits on a match rather than materialising the whole ancestor set.
+
+**Revisions** resolve as `HEAD`, a branch name, a full 40-character object id, or
+an unambiguous abbreviation of at least four hexadecimal characters. A branch
+name always wins over an id, and an abbreviation matching several objects is
+refused with the collisions named rather than resolved to one of them.
 
 **Merge bases** are the lowest common ancestors: commits reachable from both
 tips, minus any that another candidate can itself reach. The result is sorted by
@@ -314,10 +320,6 @@ cd frontend && npm run lint && npm test && npm run build
 ## Known limitations
 
 These are real and current, not planned work described as done.
-
-**Abbreviated object ids are not accepted.** Revisions resolve as `HEAD`, a
-branch name, or a full 40-character id. There is no prefix search over the object
-store, so a 7-character id fails.
 
 **History is capped at 200 commits per request, with no cursor.** `GET /commits`
 clamps `limit` to 200. The commit graph pages client-side within that, which

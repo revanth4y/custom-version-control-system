@@ -61,6 +61,26 @@ public interface ObjectStore {
     long count();
 
     /**
+     * Every stored id beginning with {@code hexPrefix}.
+     *
+     * <p>What makes this cheap is the layout rather than an index: objects are
+     * filed under the first two characters of their id, so the first two
+     * characters of the prefix name the only directory that can hold a match.
+     * Nothing outside it is read.
+     *
+     * <p>Returns every match rather than the first. A caller asking for a short
+     * prefix needs to know whether it identifies one object or several, and a
+     * store that answered with one of them would be guessing on the caller's
+     * behalf.
+     *
+     * @param hexPrefix at least {@link com.gitforge.vcs.object.ObjectId#MIN_PREFIX_LENGTH}
+     *     hexadecimal characters, in either case
+     * @return the matching ids, empty if none; never null
+     * @throws IllegalArgumentException if {@code hexPrefix} is not a valid prefix
+     */
+    List<ObjectId> findByPrefix(String hexPrefix);
+
+    /**
      * The ids of every stored object, derived from where each object is filed
      * rather than from its contents.
      *
