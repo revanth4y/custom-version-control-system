@@ -17,6 +17,7 @@ import { useRepository } from "../hooks/useRepository";
 import { contentService } from "../services/contentService";
 import { extensionOf, formatBytes, toLines } from "../utils/bytes";
 import { shouldLoadTree } from "../utils/repositoryState";
+import { pathHistoryUrl } from "../utils/pathHistory";
 
 /** Beyond this many lines the file is shown without numbering, to keep it responsive. */
 const MAX_NUMBERED_LINES = 5000;
@@ -46,10 +47,11 @@ const BlobView = () => {
   /* The commit that last touched this file, taken from the listing of the
      directory it sits in.
 
-     Not from /commits: that endpoint has no path filter — an unknown parameter
-     is ignored, so asking it for "the last commit on this file" answers with
-     the branch's latest commit whatever file you name. The tree already
-     resolves this per path, correctly, in one request. */
+     Still from the tree rather than from /commits?path=, even though that now
+     answers correctly: the sibling listing is already being fetched for the
+     breadcrumb's directory, and it resolves every entry's last commit in the
+     one request. Asking the history endpoint as well would be a second request
+     for an answer already on the page. */
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   const loadSiblings = shouldLoadTree(head);
   const siblings = useAsync(
@@ -97,6 +99,7 @@ const BlobView = () => {
             owner={owner}
             name={name}
             latestCommit={lastCommit}
+            historyTo={pathHistoryUrl(owner, name, refName, path)}
           />
         )}
       </AsyncBoundary>
@@ -104,7 +107,7 @@ const BlobView = () => {
   );
 };
 
-const FileContents = ({ file, owner, name, latestCommit }) => {
+const FileContents = ({ file, owner, name, latestCommit, historyTo }) => {
   const lines = file.binary ? [] : toLines(file.content);
   const isMarkdown = MARKDOWN_EXTENSIONS.has(extensionOf(file.path));
   const tooManyLines = lines.length > MAX_NUMBERED_LINES;
@@ -168,6 +171,7 @@ const FileContents = ({ file, owner, name, latestCommit }) => {
           raw={raw}
           onToggleRaw={() => setRaw((current) => !current)}
           copyText={file.binary ? null : file.content}
+          historyTo={historyTo}
         />
       </Box>
 

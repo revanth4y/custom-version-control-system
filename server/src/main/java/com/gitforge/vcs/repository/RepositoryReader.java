@@ -11,6 +11,7 @@ import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.storage.ObjectStore;
 import com.gitforge.vcs.tree.TreeWalker;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -214,6 +215,64 @@ public final class RepositoryReader {
             }
         }
         return Map.copyOf(resolved);
+    }
+
+    /**
+     * History for one path: the commits that touched it, newest first.
+     *
+     * <p>Answers what a file's history page asks. A directory counts as touched
+     * when anything beneath it changed, the same rule {@link #lastCommits} uses,
+     * so the two never disagree about who last changed what.
+     *
+     * <p><strong>Two bounds, because they answer different questions.</strong>
+     * {@code limit} is how many matching commits to return; {@code window} is how
+     * far back to look for them. They have to be separate: a file touched once,
+     * eighty commits ago, is found by a window of two hundred and missed by a
+     * window of thirty, and a caller asking for thirty results should not be told
+     * the file has no history because thirty recent commits happened not to
+     * mention it. Unfiltered history needs only one bound because every commit
+     * matches, so the two collapse into each other there.
+     *
+     * <p>An empty result therefore means <em>not touched within the window</em>,
+     * never <em>never changed</em>. The caller is expected to say so.
+     *
+     * <p><strong>History stops at a rename.</strong> The differ pairs nothing by
+     * content, so a rename is a delete of one path and an addition of another.
+     * Asking for the new path returns the commit that added it and nothing
+     * earlier — the file's life under its old name is real history that this
+     * cannot reach. That is a limitation to state, not to paper over by guessing
+     * which delete belongs to which addition.
+     *
+     * <p>A blank path is the repository root, which every commit touches, so it
+     * is the whole history rather than an error.
+     *
+     * @param path repository-relative, without leading or trailing slashes
+     * @param limit how many matching commits to return; must be positive
+     * @param window how many commits to examine; must be positive
+     */
+    public List<Commit> historyForPath(String revision, String path, int limit, int window) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("History limit must be positive");
+        }
+        if (window <= 0) {
+            throw new IllegalArgumentException("History window must be positive");
+        }
+        if (path == null || path.isBlank()) {
+            return history(revision, limit);
+        }
+
+        List<Commit> matches = new ArrayList<>();
+        for (Commit commit : history(revision, window)) {
+            boolean touched = changedPaths(commit).stream()
+                    .anyMatch(changed -> touches(changed, path));
+            if (touched) {
+                matches.add(commit);
+                if (matches.size() == limit) {
+                    break;
+                }
+            }
+        }
+        return List.copyOf(matches);
     }
 
     private List<String> changedPaths(Commit commit) {

@@ -50,7 +50,9 @@ const CommitDetail = () => {
                 loadingLabel="Loading changes"
                 minHeight="180px"
               >
-                {diff.data && <DiffViewer result={diff.data} />}
+                {diff.data && (
+                  <DiffViewer result={diff.data} owner={owner} name={name} blobRef={sha} />
+                )}
               </AsyncBoundary>
             </Box>
           </>

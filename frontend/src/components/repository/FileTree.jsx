@@ -12,6 +12,7 @@ import {
   showsCommitColumns,
   sortEntries,
 } from "../../utils/treeEntries";
+import { pathHistoryUrl } from "../../utils/pathHistory";
 
 /**
  * A directory listing: what is here, and what last happened to it.
@@ -29,6 +30,11 @@ import {
  * Below the wide breakpoint only the name survives. Three columns in 390px
  * leaves a commit subject about eight characters wide, which is worse than not
  * showing it.
+ *
+ * The two commit columns are the row's two ways into history: the subject opens
+ * the commit that last touched the path, the timestamp opens that path's own
+ * history. Neither is a new control — a fourth column, or a button that appears
+ * on hover, would cost the listing its shape to say what these already imply.
  */
 const FileTree = ({ owner, name, refName, entries }) => {
   if (entries.length === 0) {
@@ -158,9 +164,25 @@ const FileTree = ({ owner, name, refName, entries }) => {
                     textAlign: "right",
                   }}
                 >
-                  <Text sx={{ fontSize: 0, color: "fg.subtle", whiteSpace: "nowrap" }}>
-                    {hasLastCommit(entry) ? formatRelativeTime(entry.lastCommit.timestamp) : "—"}
-                  </Text>
+                  {hasLastCommit(entry) ? (
+                    <Link
+                      as={RouterLink}
+                      to={pathHistoryUrl(owner, name, refName, entry.path)}
+                      title={`History of ${entry.path}`}
+                      sx={{
+                        fontSize: 0,
+                        color: "fg.subtle",
+                        whiteSpace: "nowrap",
+                        "&:hover": { color: "accent.fg", textDecoration: "underline" },
+                      }}
+                    >
+                      {formatRelativeTime(entry.lastCommit.timestamp)}
+                    </Link>
+                  ) : (
+                    /* Nothing resolved, so there is nothing to date and no
+                       reason to promise a history page that would open empty. */
+                    <Text sx={{ fontSize: 0, color: "fg.subtle", whiteSpace: "nowrap" }}>—</Text>
+                  )}
                 </Box>
               </>
             )}
