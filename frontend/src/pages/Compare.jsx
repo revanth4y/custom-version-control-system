@@ -130,7 +130,9 @@ const Compare = () => {
                   </Text>
                 </Text>
               </Box>
-              <DiffViewer result={summary} />
+              {/* The head is the side that still exists; a file removed on the
+                  way there has nothing to open, and FileDiff leaves it unlinked. */}
+              <DiffViewer result={summary} owner={owner} name={name} blobRef={headRef} />
             </>
           )}
         </AsyncBoundary>

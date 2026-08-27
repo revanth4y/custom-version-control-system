@@ -3,8 +3,19 @@ import { api } from "./api";
 const base = (owner, repo) => `/repositories/${owner}/${repo}`;
 
 export const commitService = {
-  async history(owner, repo, { ref, limit = 30 } = {}) {
-    const { data } = await api.get(`${base(owner, repo)}/commits`, { params: { ref, limit } });
+  /**
+   * History reachable from a revision, optionally narrowed to one path.
+   *
+   * `path` is left off when blank rather than sent empty. The two mean the same
+   * thing to the server — the root, whose history is the whole history — but
+   * only one of them keeps the request honest about whether a filter was asked
+   * for.
+   */
+  async history(owner, repo, { ref, limit = 30, path } = {}) {
+    const target = path?.trim() ? path.trim() : undefined;
+    const { data } = await api.get(`${base(owner, repo)}/commits`, {
+      params: { ref, limit, path: target },
+    });
     return data;
   },
 

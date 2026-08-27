@@ -14,8 +14,12 @@ import { anchorFor, pathFromAnchor, summarise } from "../../utils/diff";
  * be shared and survives a reload. On a wide screen the list sits beside the
  * diffs; below that it stacks above them, where it still works as a table of
  * contents.
+ *
+ * `blobRef` is the revision each file can be opened at — the commit on a commit
+ * page, the head on a comparison. Passed in rather than inferred, because only
+ * the caller knows which side of the diff is the one still standing.
  */
-const DiffViewer = ({ result }) => {
+const DiffViewer = ({ result, owner, name, blobRef }) => {
   /* Memoised so the identity is stable between renders. `?? []` builds a new
      array every pass, and the effect below depends on it — without this the
      effect re-ran on every render rather than when the files actually
@@ -94,7 +98,7 @@ const DiffViewer = ({ result }) => {
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
           {files.map((file) => (
-            <FileDiff key={file.path} file={file} />
+            <FileDiff key={file.path} file={file} owner={owner} name={name} blobRef={blobRef} />
           ))}
         </Box>
       </Box>

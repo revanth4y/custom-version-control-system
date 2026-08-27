@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RouterLink from "../components/common/RouterLink";
-import { Box, Button, Heading, Text, Spinner } from "@primer/react";
-import { GitCommitIcon, GitCompareIcon } from "@primer/octicons-react";
+import { Box, Button, Heading, Link, Text, Spinner } from "@primer/react";
+import { FileIcon, GitCommitIcon, GitCompareIcon, XIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
 import { AsyncBoundary, EmptyState } from "../components/common/states";
 import Notice from "../components/common/Notice";
 import BranchSelector from "../components/branch/BranchSelector";
+import Octicon from "../components/common/Octicon";
 import CommitGraph from "../components/commit/CommitGraph";
 import CommitRow from "../components/commit/CommitRow";
 import { graphWidth } from "../components/commit/graphMetrics";
@@ -15,6 +16,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
 import { commitService } from "../services/commitService";
 import { buildCommitGraph } from "../utils/commitGraph";
+import { basename, isFiltered, normalisePath, pathHistoryUrl } from "../utils/pathHistory";
 
 const PAGE_SIZE = 30;
 
@@ -30,35 +32,48 @@ const MAX_HISTORY = 200;
  * relationship the graph must never draw. Refetching keeps every edge derived
  * from one coherent payload, and the layout is deterministic, so the part of
  * the graph already on screen redraws identically.
+ *
+ * A path narrows the listing to the commits that touched one file or directory.
+ * That changes what an exhausted listing means, and the difference is worth
+ * being exact about: unfiltered, running out means the history ended; filtered,
+ * it means nothing else in the searched window touched this path. The second is
+ * a statement about the window, not about the file, and the footer says so.
  */
 const CommitHistory = () => {
   const { owner, name, head, canWrite, reloadHead } = useRepository();
   const params = useParams();
   const navigate = useNavigate();
 
+  const [searchParams] = useSearchParams();
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   const refName = params.ref ? decodeURIComponent(params.ref) : head?.branch ?? "HEAD";
+  const path = normalisePath(searchParams.get("path"));
+  const filtered = isFiltered(path);
 
   const history = useAsync(
-    () => commitService.history(owner, name, { ref: refName, limit }),
-    [owner, name, refName, limit],
+    () => commitService.history(owner, name, { ref: refName, limit, path }),
+    [owner, name, refName, limit, path],
   );
 
   const commits = useMemo(() => history.data ?? [], [history.data]);
   const graph = useMemo(() => buildCommitGraph(commits), [commits]);
 
-  // The server returning fewer commits than asked for is how we know the
-  // history ended; there is no flag for it.
+  /* The server returning fewer commits than asked for is how we know there is
+     no more to load; there is no flag for it. What that exhaustion *means*
+     differs: unfiltered it is the end of the history, filtered it is the end of
+     the window the server searched. */
   const reachedEnd = commits.length < limit;
   const atServerCap = limit >= MAX_HISTORY;
 
   const changeRef = useCallback(
     (branch) => {
       setLimit(PAGE_SIZE);
-      navigate(`/${owner}/${name}/commits/${encodeURIComponent(branch)}`);
+      // The path survives the branch change: someone following one file wants
+      // to follow it on the other branch, not be dropped back into everything.
+      navigate(pathHistoryUrl(owner, name, branch, path));
     },
-    [navigate, owner, name],
+    [navigate, owner, name, path],
   );
 
   const hasNoCommits = !head?.commit;
@@ -88,7 +103,9 @@ const CommitHistory = () => {
             Commits
           </Heading>
           <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-            Every line is a parent link taken from the commit itself.
+            {filtered
+              ? "Only the commits that touched this path."
+              : "Every line is a parent link taken from the commit itself."}
           </Text>
         </Box>
 
@@ -96,6 +113,8 @@ const CommitHistory = () => {
           Compare
         </Button>
       </Box>
+
+      {filtered && <PathFilter owner={owner} name={name} refName={refName} path={path} />}
 
       {hasNoCommits ? (
         <Panel>
@@ -123,6 +142,16 @@ const CommitHistory = () => {
             </Box>
           )}
 
+          {filtered && commits.length === 0 && !history.loading ? (
+            <Panel>
+              <EmptyState
+                icon={FileIcon}
+                title="Nothing here changed this path"
+                message={`No commit in the ${MAX_HISTORY} searched from ${refName} touched it. That is what was searched, not what exists: an older change falls outside the window, and a file that was renamed carries its earlier life under its previous name.`}
+                minHeight="220px"
+              />
+            </Panel>
+          ) : (
           <Panel>
             {/* Graph and rows scroll together as one strip. Two independently
                 scrolling columns would let the dots slide away from the commits
@@ -160,6 +189,7 @@ const CommitHistory = () => {
               </Box>
             </Box>
           </Panel>
+          )}
 
           <Box
             sx={{
@@ -173,7 +203,10 @@ const CommitHistory = () => {
           >
             <Text sx={{ fontSize: 0, color: "fg.muted" }}>
               Showing {commits.length} {commits.length === 1 ? "commit" : "commits"}
-              {reachedEnd && " — the whole history from here"}
+              {reachedEnd &&
+                (filtered
+                  ? ` — everything touching this path in the ${MAX_HISTORY} searched`
+                  : " — the whole history from here")}
               {!reachedEnd && atServerCap && " — the most this view will load"}
             </Text>
 
@@ -199,6 +232,58 @@ const CommitHistory = () => {
     </PageContainer>
   );
 };
+
+/**
+ * Which path the listing is narrowed to, and the way back out.
+ *
+ * Shown only while a filter is on, so the unfiltered page is exactly what it
+ * was. The full path is the title rather than the label: a deep path pushes the
+ * clear control off a narrow screen, and the last segment is what identifies
+ * the file to someone who just clicked through from it.
+ */
+const PathFilter = ({ owner, name, refName, path }) => (
+  <Box
+    sx={{
+      display: "flex",
+      alignItems: "center",
+      gap: 2,
+      flexWrap: "wrap",
+      mb: 3,
+      px: 3,
+      py: 2,
+      bg: "canvas.subtle",
+      border: "1px solid",
+      borderColor: "border.default",
+      borderRadius: 2,
+    }}
+  >
+    <Octicon icon={FileIcon} sx={{ color: "fg.muted", flexShrink: 0 }} />
+    <Text sx={{ fontSize: 1, color: "fg.muted" }}>History of</Text>
+    <Text
+      sx={{ fontFamily: "mono", fontSize: 1, color: "fg.default", overflowWrap: "anywhere" }}
+      title={path}
+    >
+      {basename(path)}
+    </Text>
+
+    <Link
+      as={RouterLink}
+      to={pathHistoryUrl(owner, name, refName, "")}
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 1,
+        fontSize: 0,
+        color: "fg.muted",
+        ml: "auto",
+        "&:hover": { color: "accent.fg" },
+      }}
+    >
+      <Octicon icon={XIcon} size={12} />
+      Clear
+    </Link>
+  </Box>
+);
 
 const Panel = ({ children }) => (
   <Box

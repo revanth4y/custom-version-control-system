@@ -1,10 +1,12 @@
-import { Box, Label, Text } from "@primer/react";
+import { Box, Label, Link, Text } from "@primer/react";
+import RouterLink from "../common/RouterLink";
 import Octicon from "../common/Octicon";
 import { FileBinaryIcon, FileDiffIcon, LawIcon } from "@primer/octicons-react";
 
 import Hunk from "./Hunk";
 import { FileState, anchorFor, fileState, modeChange, splitPath } from "../../utils/diff";
 import { formatBytes } from "../../utils/bytes";
+import { blobUrlAt } from "../../utils/pathHistory";
 
 const STATUS_TONE = {
   ADDED: { label: "added", fg: "success.fg", border: "success.muted" },
@@ -20,11 +22,21 @@ const STATUS_TONE = {
  * mode-only change - so the body is chosen from the engine's flags rather than
  * from whether there is anything to draw.
  */
-const FileDiff = ({ file }) => {
+const FileDiff = ({ file, owner, name, blobRef }) => {
   const state = fileState(file);
   const mode = modeChange(file);
-  const { directory, name } = splitPath(file.path);
+  const { directory, name: fileName } = splitPath(file.path);
   const tone = STATUS_TONE[file.status] ?? STATUS_TONE.MODIFIED;
+
+  /* Where this file can be read at this revision.
+
+     Not offered for a deletion: the point of that entry is that the path is no
+     longer there, so a link would open a 404 while looking like a way to see
+     the file. What remains of it is the diff directly below, already on screen. */
+  const openAt =
+    owner && name && blobRef && file.status !== "DELETED"
+      ? blobUrlAt(owner, name, blobRef, file.path)
+      : null;
 
   return (
     <Box
@@ -58,14 +70,37 @@ const FileDiff = ({ file }) => {
           sx={{ color: "fg.muted", flexShrink: 0 }}
         />
 
-        <Text sx={{ fontFamily: "mono", fontSize: 0, minWidth: 0, overflowWrap: "anywhere" }}>
-          <Text as="span" sx={{ color: "fg.muted" }}>
-            {directory}
+        {openAt ? (
+          <Link
+            as={RouterLink}
+            to={openAt}
+            title={`View ${file.path} at this revision`}
+            sx={{
+              fontFamily: "mono",
+              fontSize: 0,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              color: "fg.default",
+              "&:hover": { color: "accent.fg", textDecoration: "underline" },
+            }}
+          >
+            <Text as="span" sx={{ color: "fg.muted" }}>
+              {directory}
+            </Text>
+            <Text as="span" sx={{ fontWeight: 600 }}>
+              {fileName}
+            </Text>
+          </Link>
+        ) : (
+          <Text sx={{ fontFamily: "mono", fontSize: 0, minWidth: 0, overflowWrap: "anywhere" }}>
+            <Text as="span" sx={{ color: "fg.muted" }}>
+              {directory}
+            </Text>
+            <Text as="span" sx={{ color: "fg.default", fontWeight: 600 }}>
+              {fileName}
+            </Text>
           </Text>
-          <Text as="span" sx={{ color: "fg.default", fontWeight: 600 }}>
-            {name}
-          </Text>
-        </Text>
+        )}
 
         <Label sx={{ color: tone.fg, borderColor: tone.border, flexShrink: 0 }}>{tone.label}</Label>
 
