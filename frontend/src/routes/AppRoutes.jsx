@@ -29,6 +29,7 @@ const Insights = lazy(() => import("../pages/Insights"));
 const IssueDetailPage = lazy(() => import("../pages/IssueDetailPage"));
 const Login = lazy(() => import("../pages/Login"));
 const MergePage = lazy(() => import("../pages/MergePage"));
+const MerkleExplorer = lazy(() => import("../pages/MerkleExplorer"));
 const NewIssue = lazy(() => import("../pages/NewIssue"));
 const RepositoryCode = lazy(() => import("../pages/RepositoryCode"));
 const RepositoryIssues = lazy(() => import("../pages/RepositoryIssues"));
@@ -112,6 +113,8 @@ const AppRoutes = () =>
             { path: "commit/:sha", element: <CommitDetail /> },
             { path: "graph", element: <DagExplorer /> },
             { path: "graph/:ref", element: <DagExplorer /> },
+            { path: "merkle", element: <MerkleExplorer /> },
+            { path: "merkle/:ref", element: <MerkleExplorer /> },
             { path: "compare", element: <Compare /> },
             { path: "insights", element: <Insights /> },
             // Owner-only in the interface; the server refuses a stranger's
