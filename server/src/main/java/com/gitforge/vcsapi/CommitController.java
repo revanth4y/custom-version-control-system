@@ -52,17 +52,35 @@ public class CommitController {
      * touched that file or directory, newest first.
      *
      * <p>Callers that do not send it are unaffected.
+     *
+     * <p><strong>Two shapes, one rule.</strong> Asking to paginate — by sending
+     * {@code paginate=true}, or by sending a {@code cursor}, which can only have
+     * come from a paginated response — returns an object carrying the commits
+     * alongside whether more exist. Everyone else gets the bare array this
+     * endpoint has always returned.
+     *
+     * <p>The alternative was to wrap the array for everybody. This endpoint is
+     * public and anonymous, so its callers are not all knowable from here, and
+     * changing the shape underneath them to spare one branch in this method
+     * would be charging them for our tidiness. The branch is here precisely so
+     * it is not there.
      */
     @GetMapping("/commits")
-    public List<CommitSummaryResponse> history(
+    public Object history(
             @PathVariable String owner,
             @PathVariable String name,
             @RequestParam(required = false) String ref,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String path,
+            @RequestParam(required = false) Boolean paginate,
+            @RequestParam(required = false) String cursor,
             @AuthenticationPrincipal AuthenticatedUser principal) {
 
-        return commits.history(owner, name, viewerOf(principal), ref, limit, path);
+        User viewer = viewerOf(principal);
+        if (Boolean.TRUE.equals(paginate) || (cursor != null && !cursor.isBlank())) {
+            return commits.historyPage(owner, name, viewer, ref, limit, path, cursor);
+        }
+        return commits.history(owner, name, viewer, ref, limit, path);
     }
 
     @GetMapping("/commits/{sha}")

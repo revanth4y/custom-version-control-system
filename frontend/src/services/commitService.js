@@ -19,6 +19,31 @@ export const commitService = {
     return data;
   },
 
+  /**
+   * One page of history, and the means to ask for the next.
+   *
+   * `paginate` is sent explicitly rather than inferred from the cursor, because
+   * the first page has no cursor to infer from. The server answers with an
+   * envelope only when asked, which is why `history` above still works and still
+   * returns a bare array.
+   *
+   * `hasMore` is read from the response rather than derived from how full the
+   * page is. A short page and the end of the history are different things once a
+   * path filter is involved — the search can run out of budget with history
+   * still to come — and only the server knows which happened.
+   */
+  async historyPage(owner, repo, { ref, limit = 30, path, cursor } = {}) {
+    const target = path?.trim() ? path.trim() : undefined;
+    const { data } = await api.get(`${base(owner, repo)}/commits`, {
+      params: { ref, limit, path: target, paginate: true, cursor },
+    });
+    return {
+      commits: data.commits ?? [],
+      hasMore: Boolean(data.hasMore),
+      nextCursor: data.nextCursor ?? null,
+    };
+  },
+
   async detail(owner, repo, sha) {
     const { data } = await api.get(`${base(owner, repo)}/commits/${sha}`);
     return data;

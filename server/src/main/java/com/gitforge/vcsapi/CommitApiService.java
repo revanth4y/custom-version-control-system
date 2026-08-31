@@ -7,8 +7,10 @@ import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.ObjectId;
 import com.gitforge.vcs.object.Signature;
 import com.gitforge.vcs.repository.FileChange;
+import com.gitforge.vcs.repository.HistorySlice;
 import com.gitforge.vcs.repository.VcsRepository;
 import com.gitforge.vcsapi.dto.CommitDetailResponse;
+import com.gitforge.vcsapi.dto.CommitPageResponse;
 import com.gitforge.vcsapi.dto.CommitRequest;
 import com.gitforge.vcsapi.dto.CommitSummaryResponse;
 import com.gitforge.vcsapi.dto.CompareResponse;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Recording and reading commits.
@@ -30,6 +33,15 @@ import java.util.List;
 public class CommitApiService {
 
     private static final int MAX_HISTORY = 200;
+
+    /**
+     * The page size a caller gets without asking for one.
+     *
+     * <p>Thirty, which is what the endpoint has always defaulted to and what the
+     * interface asks for. Paging changes how much history is reachable, not how
+     * much arrives unasked.
+     */
+    private static final int DEFAULT_PAGE_SIZE = 30;
 
     /**
      * How large one file may be, from {@link ContentLimits}.
@@ -148,7 +160,7 @@ public class CommitApiService {
 
         VcsRepository repository = repositories.forRead(owner, name, viewer);
 
-        int bounded = Math.clamp(limit == null ? 30 : limit, 1, MAX_HISTORY);
+        int bounded = Math.clamp(limit == null ? DEFAULT_PAGE_SIZE : limit, 1, MAX_HISTORY);
         String target = normalisePath(path);
         String revision = revisionOrHead(ref);
 
@@ -159,6 +171,65 @@ public class CommitApiService {
                 : repository.reader().historyForPath(revision, target, bounded, MAX_HISTORY);
 
         return commits.stream().map(CommitSummaryResponse::from).toList();
+    }
+
+    /**
+     * One page of the same history, with the means to ask for the next.
+     *
+     * <p>A separate method rather than a flag on {@link #history}, because the
+     * two answer differently shaped questions and only one of them can say
+     * whether more exists. What they must never differ on is the history itself:
+     * both walk the same traversal in the same order, so a page is a window onto
+     * exactly what the unpaged call would have returned.
+     *
+     * <p><strong>The walk is pinned to a commit, not a ref.</strong> The first
+     * page resolves the revision and records what it resolved to; every later
+     * page continues from that recorded commit. A branch that moves midway
+     * therefore does not silently reshuffle the history underneath a client that
+     * is halfway through reading it.
+     *
+     * @param cursor from a previous page, or null for the first
+     */
+    public CommitPageResponse historyPage(
+            String owner, String name, User viewer,
+            String ref, Integer limit, String path, String cursor) {
+
+        VcsRepository repository = repositories.forRead(owner, name, viewer);
+
+        int bounded = Math.clamp(limit == null ? DEFAULT_PAGE_SIZE : limit, 1, MAX_HISTORY);
+        String target = normalisePath(path);
+        String revision = revisionOrHead(ref);
+
+        requireResolvable(repository, revision);
+
+        Optional<ObjectId> resolved = repository.reader().resolve(revision);
+        if (resolved.isEmpty()) {
+            // The empty-repository case requireResolvable allows through. There
+            // is no history to page and no walk to continue.
+            return CommitPageResponse.last(List.of());
+        }
+        ObjectId start = resolved.get();
+
+        int offset = 0;
+        if (cursor != null && !cursor.isBlank()) {
+            HistoryCursor supplied = HistoryCursor.decode(cursor);
+            supplied.requireMatches(start, target);
+            offset = supplied.offset();
+        }
+
+        HistorySlice slice = target.isEmpty()
+                ? repository.reader().historyPage(start, offset, bounded)
+                : repository.reader().historyPageForPath(start, target, offset, bounded, MAX_HISTORY);
+
+        List<CommitSummaryResponse> commits = slice.commits().stream()
+                .map(CommitSummaryResponse::from)
+                .toList();
+
+        if (!slice.moreHistory()) {
+            return CommitPageResponse.last(commits);
+        }
+        String next = new HistoryCursor(start, target, offset + slice.walked()).encode();
+        return CommitPageResponse.more(commits, next);
     }
 
     /**

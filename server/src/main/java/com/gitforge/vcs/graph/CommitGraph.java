@@ -9,11 +9,17 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  * Traversal and reachability over the commit history.
@@ -62,18 +68,67 @@ public final class CommitGraph {
      * @return the commits reachable from {@code start}, including {@code start}
      */
     public List<ObjectId> bfs(ObjectId start) {
+        return walk(start).toList();
+    }
+
+    /**
+     * The same traversal as {@link #bfs}, produced one commit at a time.
+     *
+     * <p>Identical order, and deliberately the only implementation of it —
+     * {@link #bfs} is this method collected into a list. Two hand-written copies
+     * of a traversal are two things that can disagree, and an ordering that
+     * differed between the paged and unpaged views of the same history would be
+     * a defect no test of either one alone would catch.
+     *
+     * <p><strong>Why laziness is the point.</strong> A caller that wants the
+     * first thirty commits of a long history should read thirty commits, not all
+     * of them. Collecting the whole reachable set first and discarding the tail
+     * is work proportional to the repository rather than to the question, and it
+     * is the reason history could not be paged before: every page would have
+     * cost a full walk.
+     *
+     * <p>The stream is lazy but not parallel-safe, and it reads from the object
+     * store as it is consumed. Consume it before the store changes underneath it,
+     * and close it — or collect it — rather than abandoning it part-way.
+     *
+     * @return the commits reachable from {@code start}, including {@code start}
+     */
+    public Stream<ObjectId> walk(ObjectId start) {
         requireId(start);
+        return StreamSupport.stream(
+                Spliterators.spliteratorUnknownSize(new BreadthFirstIterator(start), Spliterator.ORDERED | Spliterator.DISTINCT),
+                false);
+    }
 
-        List<ObjectId> order = new ArrayList<>();
-        Set<ObjectId> visited = new HashSet<>();
-        Queue<ObjectId> queue = new ArrayDeque<>();
+    /**
+     * Breadth-first order, advanced on demand.
+     *
+     * <p>Holds exactly the state the recursive-free loop held before: the queue
+     * of commits still to visit, and the set of everything ever queued. Parents
+     * are read when a commit is dequeued, so nothing beyond the frontier is
+     * touched until the caller asks for it.
+     */
+    private final class BreadthFirstIterator implements Iterator<ObjectId> {
 
-        visited.add(start);
-        queue.add(start);
+        private final Set<ObjectId> visited = new HashSet<>();
+        private final Queue<ObjectId> queue = new ArrayDeque<>();
 
-        while (!queue.isEmpty()) {
+        private BreadthFirstIterator(ObjectId start) {
+            visited.add(start);
+            queue.add(start);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return !queue.isEmpty();
+        }
+
+        @Override
+        public ObjectId next() {
+            if (queue.isEmpty()) {
+                throw new NoSuchElementException("History is exhausted");
+            }
             ObjectId current = queue.remove();
-            order.add(current);
 
             for (ObjectId parent : parentsOf(current)) {
                 // Marked on enqueue, not on dequeue: otherwise a commit reachable
@@ -82,8 +137,8 @@ public final class CommitGraph {
                     queue.add(parent);
                 }
             }
+            return current;
         }
-        return order;
     }
 
     /**

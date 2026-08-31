@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RouterLink from "../components/common/RouterLink";
 import { Box, Button, Heading, Link, Text, Spinner } from "@primer/react";
@@ -20,24 +20,20 @@ import { basename, isFiltered, normalisePath, pathHistoryUrl } from "../utils/pa
 
 const PAGE_SIZE = 30;
 
-/** The server refuses more than this, so asking for more would silently return less. */
-const MAX_HISTORY = 200;
-
 /**
  * The commit history of one revision, with its graph.
  *
- * The window grows by refetching with a larger limit rather than by appending
- * pages. The engine has no cursor, and stitching separately-fetched pages
- * together would mean guessing how they join - exactly the kind of inferred
- * relationship the graph must never draw. Refetching keeps every edge derived
- * from one coherent payload, and the layout is deterministic, so the part of
- * the graph already on screen redraws identically.
+ * Pages are appended rather than refetched. The engine now issues a cursor, so
+ * the join between two pages is the server's own traversal rather than
+ * something guessed here - which is what previously ruled appending out, since
+ * the graph must never draw an edge it inferred. Every page is concatenated
+ * into one list and the graph is rebuilt from that whole list, so each edge is
+ * still derived from commits actually in hand.
  *
  * A path narrows the listing to the commits that touched one file or directory.
- * That changes what an exhausted listing means, and the difference is worth
- * being exact about: unfiltered, running out means the history ended; filtered,
- * it means nothing else in the searched window touched this path. The second is
- * a statement about the window, not about the file, and the footer says so.
+ * Whether more history remains is the server's answer, not ours: a short page
+ * can mean the history ended or that the search spent its budget without
+ * filling, and only one of those is the end of anything.
  */
 const CommitHistory = () => {
   const { owner, name, head, canWrite, reloadHead } = useRepository();
@@ -45,30 +41,63 @@ const CommitHistory = () => {
   const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
-  const [limit, setLimit] = useState(PAGE_SIZE);
 
   const refName = params.ref ? decodeURIComponent(params.ref) : head?.branch ?? "HEAD";
   const path = normalisePath(searchParams.get("path"));
   const filtered = isFiltered(path);
 
+  /* Pages already loaded, and where to continue. Reset whenever the question
+     changes - a new ref or path is a different walk, and a cursor from the old
+     one names a commit the server would rightly refuse. */
+  const [pages, setPages] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState(null);
+
   const history = useAsync(
-    () => commitService.history(owner, name, { ref: refName, limit, path }),
-    [owner, name, refName, limit, path],
+    () => commitService.historyPage(owner, name, { ref: refName, limit: PAGE_SIZE, path }),
+    [owner, name, refName, path],
   );
 
-  const commits = useMemo(() => history.data ?? [], [history.data]);
+  useEffect(() => {
+    if (!history.data) {
+      return;
+    }
+    setPages([history.data.commits]);
+    setCursor(history.data.hasMore ? history.data.nextCursor : null);
+    setMoreError(null);
+  }, [history.data]);
+
+  const commits = useMemo(() => pages.flat(), [pages]);
   const graph = useMemo(() => buildCommitGraph(commits), [commits]);
 
-  /* The server returning fewer commits than asked for is how we know there is
-     no more to load; there is no flag for it. What that exhaustion *means*
-     differs: unfiltered it is the end of the history, filtered it is the end of
-     the window the server searched. */
-  const reachedEnd = commits.length < limit;
-  const atServerCap = limit >= MAX_HISTORY;
+  const reachedEnd = cursor === null;
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const next = await commitService.historyPage(owner, name, {
+        ref: refName,
+        limit: PAGE_SIZE,
+        path,
+        cursor,
+      });
+      setPages((current) => [...current, next.commits]);
+      setCursor(next.hasMore ? next.nextCursor : null);
+    } catch (error) {
+      // The pages already shown stay shown; only the attempt to extend failed.
+      setMoreError(error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor, loadingMore, owner, name, refName, path]);
 
   const changeRef = useCallback(
     (branch) => {
-      setLimit(PAGE_SIZE);
       // The path survives the branch change: someone following one file wants
       // to follow it on the other branch, not be dropped back into everything.
       navigate(pathHistoryUrl(owner, name, branch, path));
@@ -146,8 +175,12 @@ const CommitHistory = () => {
             <Panel>
               <EmptyState
                 icon={FileIcon}
-                title="Nothing here changed this path"
-                message={`No commit in the ${MAX_HISTORY} searched from ${refName} touched it. That is what was searched, not what exists: an older change falls outside the window, and a file that was renamed carries its earlier life under its previous name.`}
+                title={reachedEnd ? "Nothing changed this path" : "Nothing here yet"}
+                message={
+                  reachedEnd
+                    ? `No commit reachable from ${refName} touched it. A file that was renamed carries its earlier life under its previous name, which is the one case where history genuinely stops short.`
+                    : `Nothing in the history searched so far touched it, and there is more to search. Load more history to keep looking back from ${refName}.`
+                }
                 minHeight="220px"
               />
             </Panel>
@@ -205,18 +238,23 @@ const CommitHistory = () => {
               Showing {commits.length} {commits.length === 1 ? "commit" : "commits"}
               {reachedEnd &&
                 (filtered
-                  ? ` — everything touching this path in the ${MAX_HISTORY} searched`
+                  ? " — everything that touched this path"
                   : " — the whole history from here")}
-              {!reachedEnd && atServerCap && " — the most this view will load"}
             </Text>
 
-            {!reachedEnd && !atServerCap && (
+            {moreError && (
+              <Notice variant="danger">
+                Could not load more history. The commits above are unaffected.
+              </Notice>
+            )}
+
+            {!reachedEnd && (
               <Button
-                onClick={() => setLimit((current) => Math.min(current + PAGE_SIZE, MAX_HISTORY))}
-                disabled={history.loading}
-                leadingVisual={history.loading ? undefined : GitCommitIcon}
+                onClick={loadMore}
+                disabled={loadingMore}
+                leadingVisual={loadingMore ? undefined : GitCommitIcon}
               >
-                {history.loading ? (
+                {loadingMore ? (
                   <Box sx={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
                     <Spinner size="small" />
                     Loading
