@@ -23,6 +23,7 @@ const CommitDetail = lazy(() => import("../pages/CommitDetail"));
 const CommitHistory = lazy(() => import("../pages/CommitHistory"));
 const Compare = lazy(() => import("../pages/Compare"));
 const CreateRepository = lazy(() => import("../pages/CreateRepository"));
+const DagExplorer = lazy(() => import("../pages/DagExplorer"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Insights = lazy(() => import("../pages/Insights"));
 const IssueDetailPage = lazy(() => import("../pages/IssueDetailPage"));
@@ -109,6 +110,8 @@ const AppRoutes = () =>
             { path: "commits", element: <CommitHistory /> },
             { path: "commits/:ref", element: <CommitHistory /> },
             { path: "commit/:sha", element: <CommitDetail /> },
+            { path: "graph", element: <DagExplorer /> },
+            { path: "graph/:ref", element: <DagExplorer /> },
             { path: "compare", element: <Compare /> },
             { path: "insights", element: <Insights /> },
             // Owner-only in the interface; the server refuses a stranger's
