@@ -182,6 +182,19 @@ numbering or colour — and for Markdown, the source behind the rendered documen
 printed, executables are labelled from their real mode, and an empty file says
 so.
 
+**Graph explorer.** The commit DAG as the subject rather than a margin: nodes,
+parent edges, merges drawn as junctions, and branch labels taken from the refs
+the server reports. It draws from the same model as the strip beside the commit
+history — one layout, at two scales — so the two can never disagree about the
+shape of a history. Pages load through the same cursor the history uses, and a
+parent that arrives later stops being a faded stub and becomes a real edge.
+
+The drawing is decorative and hidden from assistive technology; the list beside
+it is not. Every commit is a real focusable control whose name carries what the
+picture carries — whether it is a merge or a root, which branches point at it,
+which commits it descends from, and whether a parent has yet to be loaded. A
+ring and a fading line say none of that when read aloud.
+
 ## Stack
 
 | Layer | Technology |

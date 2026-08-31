@@ -158,7 +158,7 @@ src/
     common/     Markdown, ModalDialog, ErrorBoundary, loading/empty/error states
     layout/     AppShell, PageContainer
     repository/ header, tabs, file tree
-    commit/     graph, history rows
+    commit/     graph renderer and metrics, history rows
     diff/       viewer, hunks, lines
     merge/      outcome and conflict presentation
     issues/     list, detail, comments
@@ -173,9 +173,18 @@ State is React hooks — no state library. Data fetching is per-page: a hook cal
 a service, holds loading and error, and renders through `AsyncBoundary`.
 
 **Pure logic lives in `utils/`** and is tested without a DOM: commit graph lane
-assignment, diff row construction, merge outcome interpretation, issue filtering,
-contribution binning, branch name validation. 185 tests, no React Testing Library
-— the logic worth testing was extracted rather than tested through components.
+assignment, ref-to-commit association, diff row construction, merge outcome
+interpretation, issue filtering, contribution binning, branch name validation. No
+React Testing Library — the logic worth testing was extracted rather than tested
+through components, and the few components with behaviour of their own are
+rendered with `react-dom` directly.
+
+**One graph, two scales.** `utils/commitGraph.js` turns a window of commits into
+rows, lanes and edges; `components/commit/graphMetrics.js` holds the geometry and
+`createGraphMetrics` rescales it. The history gutter and the graph explorer render
+the same model through the same component and differ only in those numbers. A
+second layout algorithm would be a second answer to what a history looks like, and
+the two would eventually disagree.
 
 **Every route is `React.lazy`**, and React, Primer and the markdown renderer are
 split into their own vendor chunks. A visitor landing on the sign-in page does
