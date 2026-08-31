@@ -166,12 +166,17 @@ class PathHistoryApiIT extends AbstractIntegrationTest {
         }
 
         @Test
-        void anUnknownRevisionIsAnEmptyListRatherThanAnError() throws Exception {
+        void anUnknownRevisionIsRefusedRatherThanAnsweredEmpty() throws Exception {
+            /* This asserted a 200 and an empty list until V2.0.4. That reads
+               exactly like a branch nobody has committed to, so a misspelled
+               ref looked like an answer — the same failure the path parameter
+               was refused for before it was implemented. The filter is applied
+               to a revision that does not exist, so there is nothing to filter. */
             mockMvc.perform(get("/api/v1/repositories/octocat/demo/commits")
                             .param("ref", "no-such-branch")
                             .param("path", "README.md"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.length()").value(0));
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("NOT_FOUND"));
         }
 
         @Test

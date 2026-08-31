@@ -1,6 +1,9 @@
 package com.gitforge.vcs.ref;
 
+import com.gitforge.vcs.CountingObjectStore;
 import com.gitforge.vcs.RepositoryFixture;
+import com.gitforge.vcs.object.AmbiguousObjectIdException;
+import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,8 +13,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,6 +39,17 @@ class BranchServiceTest {
         initialCommit = repository.commit("Initial commit", null, "README.md", "# Demo\n");
         secondCommit = repository.commit("Second commit", initialCommit, "README.md", "# Demo v2\n");
         repository.branches().createBranch("main", secondCommit);
+    }
+
+    /** Writes blobs until one is filed under {@code prefix}, and returns its id. */
+    private ObjectId writeObjectStartingWith(String prefix) {
+        for (int i = 0; i < 1_000_000; i++) {
+            Blob candidate = new Blob(("collision-" + i).getBytes(StandardCharsets.UTF_8));
+            if (candidate.id().toHex().startsWith(prefix)) {
+                return repository.objectStore().write(candidate);
+            }
+        }
+        throw new IllegalStateException("No object found with prefix " + prefix);
     }
 
     @Nested
@@ -408,6 +424,94 @@ class BranchServiceTest {
             assertThat(repository.branches().resolve("has spaces")).isEmpty();
             assertThat(repository.branches().resolve(null)).isEmpty();
             assertThat(repository.branches().resolve("")).isEmpty();
+        }
+
+        @Test
+        void resolvesAnUnambiguousAbbreviation() {
+            assertThat(repository.branches().resolve(secondCommit.abbreviate(7)))
+                    .contains(secondCommit);
+            assertThat(repository.branches().resolve(initialCommit.abbreviate(4)))
+                    .contains(initialCommit);
+        }
+
+        @Test
+        void resolvesAnAbbreviationInCapitals() {
+            String upper = secondCommit.abbreviate(8).toUpperCase(Locale.ROOT);
+
+            assertThat(repository.branches().resolve(upper)).contains(secondCommit);
+        }
+
+        @Test
+        void aBranchNameWins_evenWhenItLooksLikeAnAbbreviation() {
+            /* The precedence this class has always documented, now that a short
+               hexadecimal string is a plausible id rather than nonsense. A
+               branch called "abcd" is still a name someone chose. */
+            String name = initialCommit.abbreviate(6);
+            repository.branches().createBranch(name, secondCommit);
+
+            assertThat(repository.branches().resolve(name)).contains(secondCommit);
+            assertThat(repository.branches().resolve(initialCommit.toHex())).contains(initialCommit);
+        }
+
+        @Test
+        void anAbbreviationTooShortToBeMeaningfulIsNotARevision() {
+            // Three characters is below the floor, so it is simply unknown
+            // rather than a search worth running.
+            assertThat(repository.branches().resolve(secondCommit.abbreviate(3))).isEmpty();
+        }
+
+        @Test
+        void anAbbreviationMatchingNothingIsUnknown() {
+            assertThat(repository.branches().resolve("ffffffff")).isEmpty();
+        }
+
+        @Test
+        void aFullIdIsResolvedWithoutSearchingForIt() {
+            /* The exact path must stay exact. A caller who supplies all forty
+               characters has already told the store precisely what they want, and
+               putting that through a directory search would be work done for
+               nothing — measurable here rather than merely intended. */
+            CountingObjectStore counting = new CountingObjectStore(repository.objectStore());
+            BranchService service = new BranchService(repository.refStore(), counting);
+            counting.resetCounts();
+
+            assertThat(service.resolve(secondCommit.toHex())).contains(secondCommit);
+            assertThat(counting.prefixSearchCount()).isZero();
+
+            // The converse, so the assertion above cannot pass by the search
+            // being unreachable: an abbreviation does go looking.
+            counting.resetCounts();
+            assertThat(service.resolve(secondCommit.abbreviate(7))).contains(secondCommit);
+            assertThat(counting.prefixSearchCount()).isEqualTo(1);
+        }
+
+        @Test
+        void aFullIdThatIsNotStoredDoesNotFallBackToASearch() {
+            // Absent is absent. Searching for a complete id that is not there
+            // would find nothing at greater cost.
+            CountingObjectStore counting = new CountingObjectStore(repository.objectStore());
+            BranchService service = new BranchService(repository.refStore(), counting);
+            counting.resetCounts();
+
+            assertThat(service.resolve("0".repeat(40))).isEmpty();
+            assertThat(counting.prefixSearchCount()).isZero();
+        }
+
+        @Test
+        void anAmbiguousAbbreviationIsRefusedRatherThanGuessed() {
+            /* Two objects sharing a prefix have no ordering that makes one of
+               them the right answer, so the caller is told rather than handed
+               either. The collision is constructed rather than hoped for: ids
+               cannot be chosen, so a second object is written until one starts
+               the same way as the first. */
+            String shared = initialCommit.abbreviate(4);
+            ObjectId collision = writeObjectStartingWith(shared);
+
+            assertThat(collision).isNotEqualTo(initialCommit);
+            assertThatThrownBy(() -> repository.branches().resolve(shared))
+                    .isInstanceOf(AmbiguousObjectIdException.class)
+                    .hasMessageContaining(shared)
+                    .hasMessageContaining("ambiguous");
         }
     }
 }

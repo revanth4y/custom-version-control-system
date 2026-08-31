@@ -139,6 +139,9 @@ public class CommitApiService {
      * <p>The path is not checked for existence. A deleted file has history —
      * the commit that removed it touched that path — and demanding the path
      * exist at the revision would hide it.
+     *
+     * <p>The revision, on the other hand, is checked: see
+     * {@link #requireResolvable}.
      */
     public List<CommitSummaryResponse> history(
             String owner, String name, User viewer, String ref, Integer limit, String path) {
@@ -147,12 +150,42 @@ public class CommitApiService {
 
         int bounded = Math.clamp(limit == null ? 30 : limit, 1, MAX_HISTORY);
         String target = normalisePath(path);
+        String revision = revisionOrHead(ref);
+
+        requireResolvable(repository, revision);
 
         List<Commit> commits = target.isEmpty()
-                ? repository.reader().history(revisionOrHead(ref), bounded)
-                : repository.reader().historyForPath(revisionOrHead(ref), target, bounded, MAX_HISTORY);
+                ? repository.reader().history(revision, bounded)
+                : repository.reader().historyForPath(revision, target, bounded, MAX_HISTORY);
 
         return commits.stream().map(CommitSummaryResponse::from).toList();
+    }
+
+    /**
+     * Refuses a revision that names nothing, with one exception.
+     *
+     * <p>An unknown revision used to come back as an empty history and a 200,
+     * which reads exactly like a branch nobody has committed to — so a
+     * misspelled branch, or an id the caller abbreviated too far, looked like an
+     * answer rather than a mistake. That is the same failure the path parameter
+     * was refused for before it was implemented, and it deserves the same
+     * treatment.
+     *
+     * <p><strong>The exception is a repository with no commits at all.</strong>
+     * Its HEAD names a branch that does not exist yet — that is what an empty
+     * repository <em>is</em> — and the interface asks for exactly that branch by
+     * name when it opens one. Answering 404 there would turn the ordinary empty
+     * state into an error page. An empty history is the truth in that case, and
+     * the only case.
+     */
+    private static void requireResolvable(VcsRepository repository, String revision) {
+        if (repository.reader().resolve(revision).isPresent()) {
+            return;
+        }
+        if (!repository.reader().hasCommits()) {
+            return;
+        }
+        throw new NotFoundException("Cannot resolve revision: " + revision);
     }
 
     /**
@@ -175,7 +208,7 @@ public class CommitApiService {
     public CommitDetailResponse detail(String owner, String name, User viewer, String sha) {
         VcsRepository repository = repositories.forRead(owner, name, viewer);
 
-        ObjectId commitId = parseObjectId(sha);
+        ObjectId commitId = ObjectIds.resolve(repository, sha);
         Commit commit = repository.reader().commit(commitId)
                 .orElseThrow(() -> new NotFoundException("No such commit: " + sha));
 
@@ -238,14 +271,6 @@ public class CommitApiService {
                         : viewer.getDisplayName(),
                 viewer.getEmail(),
                 Instant.now());
-    }
-
-    private static ObjectId parseObjectId(String sha) {
-        try {
-            return ObjectId.fromHex(sha);
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Not a valid commit id: " + sha);
-        }
     }
 
     private static String revisionOrHead(String ref) {

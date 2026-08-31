@@ -51,7 +51,7 @@ public class DiffApiService {
     public DiffResultResponse commitDiff(String owner, String name, User viewer, String sha, String path) {
         VcsRepository repository = repositories.forRead(owner, name, viewer);
 
-        ObjectId commitId = parseObjectId(sha);
+        ObjectId commitId = ObjectIds.resolve(repository, sha);
         if (repository.reader().commit(commitId).isEmpty()) {
             throw new NotFoundException("No such commit: " + sha);
         }
@@ -69,11 +69,4 @@ public class DiffApiService {
                 .orElseThrow(() -> new NotFoundException("Cannot resolve revision: " + revision));
     }
 
-    private static ObjectId parseObjectId(String sha) {
-        try {
-            return ObjectId.fromHex(sha);
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Not a valid commit id: " + sha);
-        }
-    }
 }

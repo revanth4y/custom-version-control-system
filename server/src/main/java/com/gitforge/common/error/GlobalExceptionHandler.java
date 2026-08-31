@@ -1,5 +1,6 @@
 package com.gitforge.common.error;
 
+import com.gitforge.vcs.object.AmbiguousObjectIdException;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.ref.RefException;
 import com.gitforge.vcs.storage.ObjectStoreException;
@@ -106,6 +107,22 @@ public class GlobalExceptionHandler {
 
         ApiError body = ApiError.of(403, "FORBIDDEN", "Access denied", request.getRequestURI());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    /**
+     * An abbreviated object id matched more than one object.
+     *
+     * <p>A conflict rather than a bad request: the caller's input is well formed
+     * and the repository is intact. What they asked for is real, there is simply
+     * more than one of it, and the message names the collisions so the next
+     * attempt can be longer rather than another guess.
+     */
+    @ExceptionHandler(AmbiguousObjectIdException.class)
+    public ResponseEntity<ApiError> handleAmbiguousObjectId(
+            AmbiguousObjectIdException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(409, "CONFLICT", ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /**

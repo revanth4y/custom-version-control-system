@@ -9,6 +9,7 @@ import com.gitforge.vcs.object.VcsObject;
 import com.gitforge.vcs.storage.ObjectStore;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +83,15 @@ public final class InMemoryObjectStore implements ObjectStore {
     @Override
     public long count() {
         return objects.size();
+    }
+
+    @Override
+    public List<ObjectId> findByPrefix(String hexPrefix) {
+        String prefix = ObjectId.normalisePrefix(hexPrefix);
+        return objects.keySet().stream()
+                .filter(id -> id.toHex().startsWith(prefix))
+                .sorted(Comparator.comparing(ObjectId::toHex))
+                .toList();
     }
 
     @Override
