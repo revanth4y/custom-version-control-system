@@ -1,13 +1,4 @@
-import {
-  BOUNDARY_LENGTH,
-  DOT_RADIUS,
-  MERGE_RADIUS,
-  colorForLane,
-  graphHeight,
-  graphWidth,
-  laneX,
-  rowY,
-} from "./graphMetrics";
+import { GUTTER_METRICS, colorForLane } from "./graphMetrics";
 import { palette } from "../../theme/gitforge";
 import { useColorModeContext } from "../../context/useColorModeContext";
 
@@ -21,11 +12,14 @@ import { useColorModeContext } from "../../context/useColorModeContext";
  *
  * Nothing here decides what connects to what: every line comes from an edge the
  * graph model derived from a real parent id.
+ *
+ * `metrics` scales the same shapes for a larger canvas. It defaults to the
+ * gutter's numbers, so the commit history renders exactly as it always has.
  */
-const CommitGraph = ({ graph, ariaHidden = true }) => {
+const CommitGraph = ({ graph, ariaHidden = true, metrics = GUTTER_METRICS }) => {
   const { scheme } = useColorModeContext();
-  const width = graphWidth(graph.laneCount);
-  const height = graphHeight(graph.rows.length);
+  const width = metrics.graphWidth(graph.laneCount);
+  const height = metrics.graphHeight(graph.rows.length);
 
   return (
     <svg
@@ -38,15 +32,15 @@ const CommitGraph = ({ graph, ariaHidden = true }) => {
       style={{ display: "block", flexShrink: 0, overflow: "visible" }}
     >
       {graph.edges.map((edge) => (
-        <ParentEdge scheme={scheme} key={`${edge.fromSha}-${edge.toSha}`} edge={edge} />
+        <ParentEdge scheme={scheme} metrics={metrics} key={`${edge.fromSha}-${edge.toSha}`} edge={edge} />
       ))}
 
       {graph.boundaries.map((stub) => (
-        <BoundaryStub scheme={scheme} key={`${stub.fromSha}-${stub.parentSha}`} stub={stub} />
+        <BoundaryStub scheme={scheme} metrics={metrics} key={`${stub.fromSha}-${stub.parentSha}`} stub={stub} />
       ))}
 
       {graph.rows.map((node) => (
-        <CommitNode scheme={scheme} key={node.sha} node={node} />
+        <CommitNode scheme={scheme} metrics={metrics} key={node.sha} node={node} />
       ))}
     </svg>
   );
@@ -60,11 +54,11 @@ const CommitGraph = ({ graph, ariaHidden = true }) => {
  * appears to run alongside the mainline and join it at the end rather than
  * cutting diagonally across every row in between.
  */
-const ParentEdge = ({ edge, scheme }) => {
-  const x1 = laneX(edge.fromLane);
-  const y1 = rowY(edge.fromRow);
-  const x2 = laneX(edge.toLane);
-  const y2 = rowY(edge.toRow);
+const ParentEdge = ({ edge, scheme, metrics }) => {
+  const x1 = metrics.laneX(edge.fromLane);
+  const y1 = metrics.rowY(edge.fromRow);
+  const x2 = metrics.laneX(edge.toLane);
+  const y2 = metrics.rowY(edge.toRow);
 
   // The colour follows the lane the line spends most of its length in.
   const color = colorForLane(edge.fromLane === edge.toLane ? edge.fromLane : edge.toLane, scheme);
@@ -101,10 +95,10 @@ const ParentEdge = ({ edge, scheme }) => {
  * not have it yet, and saying so is the point - the alternative is a line that
  * ends at nothing and reads as the history's beginning.
  */
-const BoundaryStub = ({ stub, scheme }) => {
-  const x = laneX(stub.fromLane);
-  const y = rowY(stub.fromRow);
-  const end = y + BOUNDARY_LENGTH;
+const BoundaryStub = ({ stub, scheme, metrics }) => {
+  const x = metrics.laneX(stub.fromLane);
+  const y = metrics.rowY(stub.fromRow);
+  const end = y + metrics.boundaryLength;
   const color = colorForLane(stub.fromLane, scheme);
   const id = `fade-${stub.fromSha}-${stub.parentSha}`;
 
@@ -137,25 +131,33 @@ const BoundaryStub = ({ stub, scheme }) => {
  * where lines meet, and stays distinguishable at a glance without relying on
  * colour, which the lanes are already using.
  */
-const CommitNode = ({ node, scheme }) => {
+const CommitNode = ({ node, scheme, metrics }) => {
   const canvas = palette[scheme]?.canvas ?? palette.dark.canvas;
-  const x = laneX(node.lane);
-  const y = rowY(node.row);
+  const x = metrics.laneX(node.lane);
+  const y = metrics.rowY(node.row);
   const color = colorForLane(node.lane, scheme);
 
   if (node.isMerge) {
     return (
       <g>
-        <circle cx={x} cy={y} r={MERGE_RADIUS} fill={canvas} />
-        <circle cx={x} cy={y} r={MERGE_RADIUS} fill="none" stroke={color} strokeWidth="2.25" />
+        <circle cx={x} cy={y} r={metrics.mergeRadius} fill={canvas} />
+        <circle cx={x} cy={y} r={metrics.mergeRadius} fill="none" stroke={color} strokeWidth="2.25" />
       </g>
     );
   }
 
   return (
     <g>
-      <circle cx={x} cy={y} r={DOT_RADIUS} fill={canvas} />
-      <circle cx={x} cy={y} r={DOT_RADIUS} fill={color} fillOpacity="0.9" stroke={color} strokeWidth="1.5" />
+      <circle cx={x} cy={y} r={metrics.dotRadius} fill={canvas} />
+      <circle
+        cx={x}
+        cy={y}
+        r={metrics.dotRadius}
+        fill={color}
+        fillOpacity="0.9"
+        stroke={color}
+        strokeWidth="1.5"
+      />
     </g>
   );
 };

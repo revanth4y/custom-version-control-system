@@ -7,6 +7,7 @@ import {
   GitCommitIcon,
   GitBranchIcon,
   GearIcon,
+  GitMergeIcon,
   GraphIcon,
   IssueOpenedIcon,
 } from "@primer/octicons-react";
@@ -28,6 +29,7 @@ import { PAGE_GUTTER, PAGE_MAX_WIDTHS } from "../layout/pageBounds";
 const TABS = [
   { key: "code", label: "Code", icon: CodeIcon, path: "" },
   { key: "commits", label: "Commits", icon: GitCommitIcon, path: "commits" },
+  { key: "graph", label: "Graph", icon: GitMergeIcon, path: "graph" },
   { key: "branches", label: "Branches", icon: GitBranchIcon, path: "branches" },
   { key: "issues", label: "Issues", icon: IssueOpenedIcon, path: "issues" },
   { key: "insights", label: "Insights", icon: GraphIcon, path: "insights" },
