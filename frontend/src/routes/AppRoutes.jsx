@@ -26,6 +26,7 @@ const CreateRepository = lazy(() => import("../pages/CreateRepository"));
 const DagExplorer = lazy(() => import("../pages/DagExplorer"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Insights = lazy(() => import("../pages/Insights"));
+const IntegrityCentre = lazy(() => import("../pages/IntegrityCentre"));
 const IssueDetailPage = lazy(() => import("../pages/IssueDetailPage"));
 const Login = lazy(() => import("../pages/Login"));
 const MergePage = lazy(() => import("../pages/MergePage"));
@@ -115,6 +116,10 @@ const AppRoutes = () =>
             { path: "graph/:ref", element: <DagExplorer /> },
             { path: "merkle", element: <MerkleExplorer /> },
             { path: "merkle/:ref", element: <MerkleExplorer /> },
+            // No :ref variant: the scan covers the whole object store, including
+            // objects no branch reaches, so a revision would promise a narrowing
+            // it does not do.
+            { path: "integrity", element: <IntegrityCentre /> },
             { path: "compare", element: <Compare /> },
             { path: "insights", element: <Insights /> },
             // Owner-only in the interface; the server refuses a stranger's
