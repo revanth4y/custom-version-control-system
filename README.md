@@ -321,9 +321,11 @@ cd frontend && npm run lint && npm test && npm run build
 
 These are real and current, not planned work described as done.
 
-**History is capped at 200 commits per request, with no cursor.** `GET /commits`
-clamps `limit` to 200. The commit graph pages client-side within that, which
-holds up to the cap and not past it. Longer histories need a real cursor.
+**History pages, but only forwards.** `GET /commits?paginate=true` answers with a
+cursor and walks as far back as the history goes; 200 is the page size, not the
+end of what the API will admit to. There is no cursor for going back to a page
+already left, and no way to jump to a position without walking to it — the
+interface only ever appends, so neither has been needed.
 
 **No rename detection.** A renamed file appears as a delete and an add. Pairing
 them means comparing content similarity across both sides, which the tree differ

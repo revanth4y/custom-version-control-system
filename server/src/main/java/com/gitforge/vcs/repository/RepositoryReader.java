@@ -15,10 +15,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Reading a repository without changing it.
@@ -117,11 +119,98 @@ public final class RepositoryReader {
             throw new IllegalArgumentException("History limit must be positive");
         }
         return resolve(revision)
-                .map(start -> graph.bfs(start).stream()
+                .map(start -> graph.walk(start)
                         .limit(limit)
                         .map(objects::readCommit)
                         .toList())
                 .orElseGet(List::of);
+    }
+
+    /**
+     * A page of history from a known starting commit.
+     *
+     * <p>Takes the commit rather than a revision because a paged walk must be a
+     * walk over one snapshot. Resolving the ref again on every page would let a
+     * branch move underneath the traversal, and the client would receive commits
+     * that skip or repeat with nothing in the response to indicate it.
+     *
+     * @param start  the commit the walk began from, already resolved
+     * @param offset how many commits of that walk the caller has already seen
+     * @param limit  the greatest number of commits to return
+     */
+    public HistorySlice historyPage(ObjectId start, int offset, int limit) {
+        requirePaging(offset, limit);
+
+        // One more than asked for: whether history continues is answered by
+        // trying to take a commit past the page, not by a second traversal.
+        List<Commit> found = graph.walk(start)
+                .skip(offset)
+                .limit(limit + 1L)
+                .map(objects::readCommit)
+                .toList();
+
+        boolean moreHistory = found.size() > limit;
+        List<Commit> page = moreHistory ? found.subList(0, limit) : found;
+        return new HistorySlice(page, page.size(), moreHistory);
+    }
+
+    /**
+     * A page of history for one path, from a known starting commit.
+     *
+     * <p>The budget bounds the work, not the history. A page that spends its
+     * whole budget without filling reports {@code moreHistory} anyway, so the
+     * caller can continue rather than conclude the file has no earlier history —
+     * which is exactly the wrong conclusion, and the one the unpaged endpoint
+     * could not avoid drawing.
+     *
+     * @param budget the greatest number of commits to examine for this page
+     */
+    public HistorySlice historyPageForPath(
+            ObjectId start, String path, int offset, int limit, int budget) {
+
+        requirePaging(offset, limit);
+        if (budget <= 0) {
+            throw new IllegalArgumentException("History budget must be positive");
+        }
+        if (path == null || path.isBlank()) {
+            return historyPage(start, offset, limit);
+        }
+
+        List<Commit> matches = new ArrayList<>();
+        int walked = 0;
+        boolean moreHistory = false;
+
+        // Held open only as long as the page needs it: the walk reads commits as
+        // it is consumed, and stops the moment the page is full.
+        try (Stream<ObjectId> walk = graph.walk(start).skip(offset)) {
+            Iterator<ObjectId> remaining = walk.iterator();
+
+            while (remaining.hasNext()) {
+                if (matches.size() == limit || walked == budget) {
+                    // Something is left, whether or not the page filled.
+                    moreHistory = true;
+                    break;
+                }
+                Commit commit = objects.readCommit(remaining.next());
+                walked++;
+
+                boolean touched = changedPaths(commit).stream()
+                        .anyMatch(changed -> touches(changed, path));
+                if (touched) {
+                    matches.add(commit);
+                }
+            }
+        }
+        return new HistorySlice(matches, walked, moreHistory);
+    }
+
+    private static void requirePaging(int offset, int limit) {
+        if (offset < 0) {
+            throw new IllegalArgumentException("History offset must not be negative");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("History limit must be positive");
+        }
     }
 
     public Optional<Commit> commit(ObjectId id) {

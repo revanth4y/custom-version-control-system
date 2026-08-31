@@ -88,6 +88,18 @@ what you want when tracing where a change came from.
 Both are iterative, not recursive: a deep history would otherwise overflow the
 stack, and "deep" here means a few thousand commits.
 
+**BFS is produced lazily.** `walk` yields one commit at a time and reads parents
+only as it advances; `bfs` is that walk collected into a list. There is one
+implementation, not two — an order that differed between the paged and unpaged
+views of the same history would be a defect no test of either alone would catch.
+
+Laziness is what makes paged history possible. Collecting every reachable commit
+and then keeping thirty is work proportional to the repository rather than to the
+question, so before this each page would have cost a full walk. A page now reads
+the commits before it and its own, and nothing beyond. `bfs` itself is still
+eager, because its callers — repository statistics and contribution counts —
+genuinely want the whole set.
+
 `isAncestor` short-circuits the moment it finds the target rather than
 materialising the full ancestor set.
 

@@ -365,7 +365,42 @@ A rejected commit writes no object and moves no branch.
 ### `GET /repositories/{owner}/{name}/commits` · anonymous
 
 `ref` optional, `limit` optional — **clamped to 200**, default 30. Returns an
-array, newest first. There is no cursor.
+array, newest first.
+
+`paginate=true` optional: returns a page and a cursor instead of a bare array.
+`cursor` optional: continues a paged walk, and implies `paginate`.
+
+**The array is what you get unless you ask otherwise.** A request sending only
+`ref`, `limit` and `path` behaves exactly as it always has — this endpoint is
+public and anonymous, and changing its shape for callers who did not ask would
+break them to spare one branch in the controller.
+
+```json
+{
+  "commits": [ ... ],
+  "hasMore": true,
+  "nextCursor": "djE6YTFiMmMz..."
+}
+```
+
+`hasMore` says whether any history remains. `nextCursor` is **omitted** when it
+does not. Send that cursor back to get the next page; keep going until `hasMore`
+is false. Do not infer the end from a short page — with a `path` filter a page
+can be short because the search spent its budget, which is not the end of
+anything.
+
+The cursor is **opaque**. It records the commit the walk started from, so a
+branch that moves midway does not reshuffle the history under a client halfway
+through reading it — pages continue over the snapshot the walk began with. It is
+not a capability: every page is authorised from scratch, so a private repository
+answers 404 on page two exactly as on page one.
+
+A cursor that is malformed, or that belongs to a different revision or a
+different `path`, is a **400**. It is never silently ignored — restarting the
+walk at the top would loop a paging client forever with nothing to indicate why.
+
+`limit` is the page size when paginating, under the same clamp as before: 1 to
+200, default 30.
 
 `path` optional: the commits that touched one file or directory, newest first.
 A directory counts as touched when anything beneath it changed. Leading and
@@ -380,6 +415,12 @@ thirty commits happened not to mention it.
 
 So an empty array means **not touched within those 200 commits** — never "this
 path has no history". A path that never existed answers the same way.
+
+Paginating removes that ambiguity, which is the main reason to prefer it for
+file history. The 200 becomes a budget per page rather than the end of the
+search: an empty page carrying a `nextCursor` means the budget ran out and there
+is more to look through, while an empty page with `hasMore: false` means nothing
+reachable from the revision ever touched that path.
 
 A `ref` that names nothing is a **404**, not an empty array. It used to be the
 latter, which read exactly like a branch nobody had committed to, so a misspelled
