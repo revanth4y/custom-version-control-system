@@ -26,6 +26,27 @@ A branch name always wins. A branch called `abcd` resolves to what it points at,
 never to the object whose id begins `abcd`, because a name that happens to look
 like a hash is still a name someone chose.
 
+**Relative suffixes.** Any of those forms may be followed by `^n` — the n-th
+parent, counting from one, so `^2` is a merge's second parent — or `~n`, n
+generations back always by first parent. A bare `^` or `~` means one, `~0` and
+`^0` mean the commit itself, and suffixes chain left to right: `main~2^2` is the
+second parent of the commit two before `main`. The suffix is considered only
+after the whole string has failed to name a commit outright.
+
+| What you wrote | Answer |
+|---|---|
+| `HEAD~1`, `main^`, `<id>~2`, `<abbrev>^` | the commit that walk reaches |
+| A parent the commit does not have | **404** |
+| Further back than the root commit | **404** |
+| A base that resolves to nothing | **404** |
+| A suffix that is not readable, such as `~abc` | **400** |
+| A suffix on an ambiguous abbreviation | **409**, as without one |
+
+`^` and `~` are forbidden in branch names, so no name can be shadowed by this.
+The `{sha}` in a commit path names an object and never a branch, so it accepts
+`<id>~1` for the same reason it accepts `<id>`, and refuses `HEAD~1` for the same
+reason it refuses `HEAD`.
+
 | What you wrote | Answer |
 |---|---|
 | Full id, stored | the object |
