@@ -173,3 +173,47 @@ export const typeConflict = {
   ],
   "cleanlyMerged": []
 };
+
+/**
+ * ready/line-merge <- ready/line-merge-clash: HTTP 409, CONFLICTED with regions
+ *
+ * Both sides rewrote line 1; ours had also changed line 7, which merged. The
+ * regions are what the line-level merge established about the part that did
+ * not - captured rather than written, because a hand-made one would not have
+ * shown that a resolved region leaves no trace here at all.
+ */
+export const contentConflictWithRegions = {
+  "outcome": "CONFLICTED",
+  "head": null,
+  "mergeCommit": null,
+  "tree": null,
+  "conflicts": [
+    {
+      "kind": "CONTENT",
+      "path": "settings.conf",
+      "base": {
+        "mode": "100644",
+        "id": "7522149cdfe344766e361c49fe4bfd9e21ba0035",
+        "directory": false
+      },
+      "ours": {
+        "mode": "100644",
+        "id": "7fad3c520a139ff3b5454534cb784cdcb4a997e2",
+        "directory": false
+      },
+      "theirs": {
+        "mode": "100644",
+        "id": "2fc1a590b5260f8fb524d0f9a312783bb7797caf",
+        "directory": false
+      },
+      "regions": [
+        {
+          "base": { "start": 1, "end": 2 },
+          "ours": { "start": 1, "end": 2 },
+          "theirs": { "start": 1, "end": 2 }
+        }
+      ]
+    }
+  ],
+  "cleanlyMerged": []
+};

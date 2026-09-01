@@ -2,18 +2,22 @@ package com.gitforge.vcs.merge;
 
 import com.gitforge.vcs.diff.TreeChange;
 import com.gitforge.vcs.diff.TreeDiffer;
+import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.TextContent;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.storage.ObjectStore;
 import com.gitforge.vcs.tree.TreeWalker;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -44,21 +48,52 @@ import java.util.TreeSet;
  * entire subtree without reading a single object beneath it, and the untouched
  * subtree's existing id is reused verbatim in the merged result — so no new
  * objects are written for parts of the repository nobody changed.
+ *
+ * <p>Where both sides changed the same text file, the disagreement is taken one
+ * level further by {@link LineMerger}. Comparing whole-file identities is too
+ * coarse to see that two branches editing opposite ends of a file have not
+ * really disagreed; only what genuinely overlaps is left as a conflict.
  */
 public final class ThreeWayMerger {
 
     /** Known contents, so it needs no read and need not have been stored. */
     private static final ObjectId EMPTY_TREE_ID = Tree.empty().id();
 
+    /**
+     * How many files one merge will try to reconcile line by line.
+     *
+     * <p>Each attempt is already bounded by {@link com.gitforge.vcs.diff.LineDiffer}
+     * — 20,000 lines and 5,000 differences per alignment, against tracked files
+     * here measuring median 85 lines and 641 at the longest — so this bounds
+     * only how many such attempts one request can ask for.
+     *
+     * <p>Only files <em>both</em> sides changed count towards it. Across all 50
+     * merges in this repository's history no merge has ever had one, and the
+     * largest number of files either side changed at all was 194; a thousand
+     * leaves that five times over. Beyond it a file is reported as a plain
+     * content conflict, which is what it would have been anyway.
+     */
+    static final int MAX_LINE_MERGES = 1_000;
+
     private final ObjectStore store;
     private final TreeDiffer differ;
     private final TreeWalker walker;
+    private final int maxLineMerges;
 
     public ThreeWayMerger(ObjectStore store) {
+        this(store, MAX_LINE_MERGES);
+    }
+
+    /** Visible for tests, so the budget can be reached without a thousand files. */
+    ThreeWayMerger(ObjectStore store, int maxLineMerges) {
         if (store == null) {
             throw new IllegalArgumentException("Object store must not be null");
         }
+        if (maxLineMerges < 0) {
+            throw new IllegalArgumentException("The line-merge budget must not be negative: " + maxLineMerges);
+        }
         this.store = store;
+        this.maxLineMerges = maxLineMerges;
         this.differ = new TreeDiffer(store);
         this.walker = new TreeWalker(store);
     }
@@ -97,24 +132,27 @@ public final class ThreeWayMerger {
             return new MergeResult.Conflicted(run.conflicts, run.cleanChanges);
         }
 
-        run.writePendingTrees();
+        run.writePending();
         return new MergeResult.Clean(merged);
     }
 
     /**
      * State for one merge.
      *
-     * <p>Newly built trees are held in memory and written only if the merge turns
-     * out to be clean. {@link Tree} computes its own id on construction, so the
-     * result can be assembled and identified in full before anything is
-     * persisted — which is how a conflicted merge leaves the object store
-     * untouched.
+     * <p>Newly built trees, and any blob a line-level merge produced, are held in
+     * memory and written only if the merge turns out to be clean. {@link Tree}
+     * and {@link Blob} both compute their own id on construction, so the result
+     * can be assembled and identified in full before anything is persisted —
+     * which is how a conflicted merge leaves the object store untouched.
      */
     private final class Run {
 
         private final List<MergeConflict> conflicts = new ArrayList<>();
         private final List<TreeChange> cleanChanges = new ArrayList<>();
         private final List<Tree> pendingTrees = new ArrayList<>();
+        private final List<Blob> pendingBlobs = new ArrayList<>();
+
+        private int remainingLineMerges = maxLineMerges;
 
         private ObjectId mergeTree(String prefix, ObjectId base, ObjectId ours, ObjectId theirs) {
             if (ours.equals(theirs)) {
@@ -182,11 +220,72 @@ public final class ThreeWayMerger {
                                 com.gitforge.vcs.object.FileMode.DIRECTORY, name, subtree));
             }
 
-            conflicts.add(MergeConflict.of(classify(base, ours, theirs), path, base, ours, theirs));
+            ConflictKind kind = classify(base, ours, theirs);
+            Optional<LineMergeResult> lines = kind == ConflictKind.CONTENT
+                    ? mergeLines(base, ours, theirs)
+                    : Optional.empty();
+
+            if (lines.isPresent() && lines.get() instanceof LineMergeResult.Clean clean) {
+                return Optional.of(stage(path, name, ours, clean.content()));
+            }
+
+            List<ConflictRegion> regions = lines
+                    .map(result -> ((LineMergeResult.Conflicted) result).regions())
+                    .orElse(List.of());
+
+            conflicts.add(MergeConflict.of(kind, path, base, ours, theirs, regions));
             // Ours stands in while the walk continues so every conflict is found
             // in one pass rather than stopping at the first. The tree built from
             // it is discarded.
-            return java.util.Optional.ofNullable(ours);
+            return Optional.ofNullable(ours);
+        }
+
+        /**
+         * Reconciles one file's lines, when that is a question worth asking.
+         *
+         * <p>Declined — leaving the ordinary content conflict — for anything the
+         * line view cannot honestly speak about: a directory in the base, a mode
+         * the two sides disagree on, since merging the content would leave no
+         * defensible answer for which mode the result has; content that is not
+         * text; and files past the budget or the differ's own bounds.
+         *
+         * @return what the line merge found, or empty if it was not attempted
+         */
+        private Optional<LineMergeResult> mergeLines(TreeEntry base, TreeEntry ours, TreeEntry theirs) {
+            if (isDirectory(base) || !ours.mode().equals(theirs.mode()) || remainingLineMerges <= 0) {
+                return Optional.empty();
+            }
+
+            Optional<String> baseText = textOf(base);
+            Optional<String> ourText = textOf(ours);
+            Optional<String> theirText = textOf(theirs);
+            if (baseText.isEmpty() || ourText.isEmpty() || theirText.isEmpty()) {
+                return Optional.empty();
+            }
+
+            // Counted once the alignment is actually going to run, so files
+            // skipped as binary do not consume another file's budget.
+            remainingLineMerges--;
+            return LineMerger.merge(baseText.get(), ourText.get(), theirText.get());
+        }
+
+        /**
+         * Holds the merged file until the whole merge is known to be clean.
+         *
+         * <p>Recorded in {@code cleanChanges} as well, so a merge that conflicts
+         * elsewhere still reports this file among what it managed to reconcile.
+         */
+        private TreeEntry stage(String path, String name, TreeEntry ours, String content) {
+            Blob merged = new Blob(content.getBytes(StandardCharsets.UTF_8));
+            pendingBlobs.add(merged);
+            cleanChanges.add(new TreeChange.Modified(
+                    path, ours.mode(), ours.id(), ours.mode(), merged.id()));
+            return new TreeEntry(ours.mode(), name, merged.id());
+        }
+
+        /** The entry's content as text, or empty when it is not text. */
+        private Optional<String> textOf(TreeEntry entry) {
+            return TextContent.asText(store.readBlob(entry.id()).payload());
         }
 
         /** Records what taking a whole subtree from theirs changes relative to ours. */
@@ -233,7 +332,9 @@ public final class ThreeWayMerger {
             }
         }
 
-        private void writePendingTrees() {
+        /** Blobs before the trees that name them, so nothing points at nothing. */
+        private void writePending() {
+            pendingBlobs.forEach(store::write);
             pendingTrees.forEach(store::write);
         }
 
