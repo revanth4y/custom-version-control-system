@@ -1,6 +1,7 @@
 package com.gitforge.vcs.diff;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +44,60 @@ public final class LineDiffer {
      */
     static final int MAX_EDIT_DISTANCE = 5_000;
 
+    /** The entry in an alignment for a line the other side does not have. */
+    public static final int UNMATCHED = -1;
+
     private LineDiffer() {
+    }
+
+    /**
+     * Which line of {@code newLines} each line of {@code oldLines} corresponds to.
+     *
+     * <p>The same Myers computation as {@link #diff}, reported as the raw
+     * correspondence rather than as hunks. Hunks describe a change for a reader
+     * and deliberately drop the unchanged regions between them; a three-way
+     * merge needs precisely those regions, because a line both sides left alone
+     * is what tells it their edits do not overlap.
+     *
+     * <p>The returned array has one entry per old line: the index of the line it
+     * matches in {@code newLines}, or {@link #UNMATCHED}. Entries are strictly
+     * increasing where they are matched, since an alignment cannot cross itself.
+     * The array is freshly allocated and belongs to the caller.
+     *
+     * @return the alignment, or empty if the inputs exceed the bounds above
+     */
+    public static Optional<int[]> align(String[] oldLines, String[] newLines) {
+        if (oldLines.length > MAX_LINES || newLines.length > MAX_LINES) {
+            return Optional.empty();
+        }
+
+        int prefix = commonPrefix(oldLines, newLines);
+        int suffix = commonSuffix(oldLines, newLines, prefix);
+
+        Optional<List<Edit>> script = shortestEditScript(
+                slice(oldLines, prefix, oldLines.length - suffix),
+                slice(newLines, prefix, newLines.length - suffix));
+        if (script.isEmpty()) {
+            return Optional.empty();
+        }
+
+        int[] matched = new int[oldLines.length];
+        Arrays.fill(matched, UNMATCHED);
+
+        // The trimmed ends are identical by definition, so they match position
+        // for position without the algorithm having to say so.
+        for (int i = 0; i < prefix; i++) {
+            matched[i] = i;
+        }
+        for (int i = 0; i < suffix; i++) {
+            matched[oldLines.length - 1 - i] = newLines.length - 1 - i;
+        }
+        for (Edit edit : script.get()) {
+            if (edit.type() == DiffLine.Type.CONTEXT) {
+                matched[prefix + edit.oldIndex()] = prefix + edit.newIndex();
+            }
+        }
+        return Optional.of(matched);
     }
 
     /**

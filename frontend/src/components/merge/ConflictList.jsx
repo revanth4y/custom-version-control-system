@@ -3,7 +3,7 @@ import { Box, Label, Link, Text } from "@primer/react";
 import Octicon from "../common/Octicon";
 import { AlertIcon, FileDirectoryFillIcon, FileIcon, TrashIcon } from "@primer/octicons-react";
 
-import { countByKind, deletedBy, describeKind } from "../../utils/merge";
+import { countByKind, deletedBy, describeKind, describeRange } from "../../utils/merge";
 import { splitPath } from "../../utils/diff";
 
 /**
@@ -107,11 +107,78 @@ const Conflict = ({ conflict, owner, name, target, source }) => {
           <Side title="theirs" subtitle={source} side={conflict.theirs} accent />
         </Box>
 
+        <Regions regions={conflict.regions} />
+
         <Paths conflict={conflict} owner={owner} name={name} target={target} source={source} />
       </Box>
     </Box>
   );
 };
+
+/**
+ * Which parts of the file actually disagree.
+ *
+ * Shown only where the engine merged the file line by line and could not
+ * reconcile part of it. Its absence is not "no regions" but "not established" -
+ * a binary file or a directory has no lines to speak of - so nothing is
+ * rendered rather than an empty list, which would read as a claim.
+ *
+ * The three columns line up with the three sides above, so a range can be read
+ * against the version it belongs to.
+ */
+const Regions = ({ regions }) => {
+  if (!regions?.length) return null;
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Text sx={{ display: "block", fontSize: 0, color: "fg.muted", mb: 2 }}>
+        {regions.length === 1
+          ? "One stretch of this file could not be reconciled"
+          : `${regions.length} stretches of this file could not be reconciled`}
+        . The rest of it merged.
+      </Text>
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {regions.map((region, index) => (
+          <Box
+            key={`${region.base?.start}-${region.ours?.start}-${region.theirs?.start}-${index}`}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: ["1fr", "1fr", "repeat(3, minmax(0, 1fr))"],
+              gap: 2,
+            }}
+          >
+            <Range label="base" range={region.base} />
+            <Range label="ours" range={region.ours} />
+            <Range label="theirs" range={region.theirs} />
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
+const Range = ({ label, range }) => (
+  <Box
+    sx={{
+      border: "1px solid",
+      borderColor: "border.default",
+      borderRadius: 2,
+      bg: "canvas.inset",
+      px: 2,
+      py: 1,
+      display: "flex",
+      alignItems: "baseline",
+      gap: 2,
+      minWidth: 0,
+    }}
+  >
+    <Text sx={{ fontSize: 0, color: "fg.subtle", flexShrink: 0 }}>{label}</Text>
+    <Text sx={{ fontFamily: "mono", fontSize: 0, overflowWrap: "anywhere", minWidth: 0 }}>
+      {describeRange(range)}
+    </Text>
+  </Box>
+);
 
 /**
  * One side of a conflict.

@@ -227,6 +227,42 @@ side is a directory it is `TYPE`; if one side is absent it is `MODIFY_DELETE`; i
 both blob ids match it can only be `MODE`; otherwise it is `ADD_ADD` when the base
 had nothing and `CONTENT` when it did.
 
+### Line-level merging
+
+`CONTENT` is the one kind the tree walk cannot settle on its own. Two different
+edits give two different blob ids, so comparing identities says the sides
+disagree even when their edits are nowhere near each other. Before reporting one,
+`LineMerger` compares the three files line by line.
+
+Each side is aligned against the base with `LineDiffer.align` — the same Myers
+computation the diff viewer uses, reported as a correspondence rather than as
+hunks, because a merge needs precisely the unchanged regions a hunk drops. A base
+line both sides kept, at the position both have reached, is *stable*; everything
+between two stable lines is a chunk, decided by the same table as above with the
+lines of that chunk in place of the whole file.
+
+**Edits need a line between them.** Changes to immediately neighbouring lines
+fall in one chunk and conflict: nothing in the file says the two were meant to
+stand together, and interleaving them would be a guess. This matches
+`git merge-file`, and is the price of never inventing a resolution.
+
+It is attempted only where it can answer honestly — both sides text, both modes
+equal, and a file rather than a directory in the base. A mode the two sides
+disagree on stops it, because a merged file would have no defensible mode. Binary
+content, directories, `ADD_ADD` with no base to measure against, and anything past
+`MAX_LINE_MERGES` fall back to the file-level conflict unchanged.
+
+A conflict that did get this far reports the disagreeing **regions**: half-open,
+one-based line ranges into the base, ours and theirs. An empty range on a side
+says that side contributes no lines there, which is how a deletion reads. No
+regions at all means the question was never asked, not that nothing conflicts.
+
+> **Symmetric by construction.** A chunk where the sides agree, or where one
+> matches the base, resolves the same way whichever side is called ours;
+> everything else stays a conflict. Nothing breaks a tie by preferring a side — a
+> merge that quietly picked a winner would give a different answer depending on
+> which branch you were standing on.
+
 ### What a conflict does not do
 
 **A conflicted merge writes nothing.** No object is persisted and no branch moves.
@@ -240,10 +276,16 @@ conflict, using our side as a placeholder so the traversal can proceed, and the
 tree built from those placeholders is discarded. You see the whole picture before
 deciding what to do.
 
-> **Divergence from Git.** Resolution is at file level. A conflict reports the
-> path, the kind, and the object on each side; it does not write `<<<<<<<`
-> markers into the file, and there is no index or working tree to resolve them
-> in. GitForge is a server: there is no checkout for anyone to edit.
+**A merged file is written like anything else.** A blob produced by a line-level
+merge is held in memory alongside the trees and persisted only once the whole
+merge is known to be clean, so a merge that conflicts anywhere still leaves the
+store byte-for-byte unchanged.
+
+> **Divergence from Git.** A conflict is reported, never written into the file.
+> It carries the path, the kind, the object on each side, and the line ranges
+> that disagree; it does not write `<<<<<<<` markers, and there is no index or
+> working tree to resolve them in. GitForge is a server: there is no checkout for
+> anyone to edit.
 
 ### Merge outcomes
 
@@ -285,7 +327,7 @@ Honest list, so nothing above reads as more than it is:
 - No rename detection
 - No tags, no remotes, no reflog, no packed-refs
 - No garbage collection
-- No line-level conflict resolution
+- No resolution of a conflict once reported: conflicting regions are named, not editable
 - No submodules, no symlink entries, no `.gitignore` semantics
 - Criss-cross merges pick one base rather than merging bases recursively
 - Single-node storage: no replication, no sharding
@@ -301,6 +343,8 @@ pin the properties the design claims:
   under
 - A subtree with a matching id is never read during a diff — enforced by a
   counting store that fails the test if it is
-- A conflicted merge leaves the object store byte-for-byte unchanged
+- A conflicted merge leaves the object store byte-for-byte unchanged, including
+  any blob a line-level merge had already produced
 - BFS is proved not to be a topological order, with the fixture that proved it
-- A merge produces the same result with its arguments swapped
+- A merge produces the same result with its arguments swapped, line-level
+  results included

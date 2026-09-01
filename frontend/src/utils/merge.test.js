@@ -6,6 +6,7 @@ import {
   countByKind,
   deletedBy,
   describeKind,
+  describeRange,
   isTypeMismatch,
   movedTheBranch,
   resultFrom,
@@ -194,5 +195,27 @@ describe("resultFrom", () => {
     expect(resultFrom({ response: { status: 409, data: { code: "CONFLICT", message: "branch exists" } } })).toBeNull();
     expect(resultFrom({ message: "Network Error" })).toBeNull();
     expect(resultFrom(undefined)).toBeNull();
+  });
+});
+
+describe("describeRange", () => {
+  it("names a single line as one line", () => {
+    expect(describeRange({ start: 7, end: 8 })).toBe("line 7");
+  });
+
+  // Ranges arrive half-open; a reader looking at the file wants the last line
+  // that is actually in the range, not the one after it.
+  it("names a run inclusively", () => {
+    expect(describeRange({ start: 2, end: 5 })).toBe("lines 2–4");
+  });
+
+  // A real answer, not missing data: it is how a deletion reads.
+  it("says so when a side contributes nothing", () => {
+    expect(describeRange({ start: 4, end: 4 })).toBe("no lines");
+  });
+
+  it("does not invent a range it was not given", () => {
+    expect(describeRange(undefined)).toBe("no lines");
+    expect(describeRange(null)).toBe("no lines");
   });
 });

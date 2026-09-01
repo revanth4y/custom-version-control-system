@@ -60,6 +60,20 @@ export function deletedBy(conflict) {
   return null;
 }
 
+/**
+ * A conflicting line range, in words.
+ *
+ * Ranges arrive half-open and one-based; they are shown inclusive, because
+ * "lines 7-9" is what a person reading the file will look for. An empty range
+ * is a real answer rather than missing data - it says that side contributes
+ * nothing to the disagreement, which is how a deletion reads.
+ */
+export function describeRange(range) {
+  if (!range || range.end <= range.start) return "no lines";
+  if (range.end - range.start === 1) return `line ${range.start}`;
+  return `lines ${range.start}–${range.end - 1}`;
+}
+
 /** A conflict where one side is a directory and the other is not. */
 export function isTypeMismatch(conflict) {
   const ours = conflict?.ours;
