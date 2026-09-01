@@ -2,6 +2,7 @@ package com.gitforge.vcs.repository;
 
 import com.gitforge.vcs.diff.FileDiff;
 import com.gitforge.vcs.diff.Hunk;
+import com.gitforge.vcs.diff.InlineDiffer;
 import com.gitforge.vcs.diff.LineDiffer;
 import com.gitforge.vcs.diff.TreeChange;
 import com.gitforge.vcs.diff.TreeDiffer;
@@ -59,9 +60,13 @@ public final class DiffService {
         List<FileDiff> diffs = new ArrayList<>(changes.size());
         int withHunks = 0;
 
+        // One differ for the whole comparison, because its budget is a property
+        // of the response rather than of any single file.
+        InlineDiffer inlineDiffer = new InlineDiffer();
+
         for (TreeChange change : changes) {
             boolean allowHunks = withHunks < MAX_FILES_WITH_HUNKS;
-            FileDiff diff = toFileDiff(change, allowHunks);
+            FileDiff diff = toFileDiff(change, allowHunks, inlineDiffer);
             if (diff.hasHunks()) {
                 withHunks++;
             }
@@ -87,20 +92,20 @@ public final class DiffService {
         return diffTrees(parentTree, commit.tree(), pathFilter);
     }
 
-    private FileDiff toFileDiff(TreeChange change, boolean allowHunks) {
+    private FileDiff toFileDiff(TreeChange change, boolean allowHunks, InlineDiffer inlineDiffer) {
         return switch (change) {
             case TreeChange.Added added -> build(
                     added.path(), FileDiff.Status.ADDED,
-                    null, added.blob(), null, added.mode(), allowHunks);
+                    null, added.blob(), null, added.mode(), allowHunks, inlineDiffer);
 
             case TreeChange.Deleted deleted -> build(
                     deleted.path(), FileDiff.Status.DELETED,
-                    deleted.blob(), null, deleted.mode(), null, allowHunks);
+                    deleted.blob(), null, deleted.mode(), null, allowHunks, inlineDiffer);
 
             case TreeChange.Modified modified -> build(
                     modified.path(), FileDiff.Status.MODIFIED,
                     modified.oldBlob(), modified.newBlob(),
-                    modified.oldMode(), modified.newMode(), allowHunks);
+                    modified.oldMode(), modified.newMode(), allowHunks, inlineDiffer);
         };
     }
 
@@ -111,7 +116,8 @@ public final class DiffService {
             ObjectId newBlob,
             FileMode oldMode,
             FileMode newMode,
-            boolean allowHunks) {
+            boolean allowHunks,
+            InlineDiffer inlineDiffer) {
 
         byte[] oldContent = oldBlob == null ? new byte[0] : objects.readBlob(oldBlob).payload();
         byte[] newContent = newBlob == null ? new byte[0] : objects.readBlob(newBlob).payload();
@@ -136,9 +142,13 @@ public final class DiffService {
                     false, true, List.of(), 0, 0, oldContent.length, newContent.length);
         }
 
+        // After line diffing, never instead of it: which lines changed is
+        // already decided, and this only marks what changed inside them.
+        List<Hunk> annotated = inlineDiffer.annotate(hunks.get());
+
         int additions = 0;
         int deletions = 0;
-        for (Hunk hunk : hunks.get()) {
+        for (Hunk hunk : annotated) {
             for (var line : hunk.lines()) {
                 switch (line.type()) {
                     case ADDED -> additions++;
@@ -150,6 +160,6 @@ public final class DiffService {
             }
         }
         return new FileDiff(path, status, oldBlob, newBlob, oldMode, newMode,
-                false, false, hunks.get(), additions, deletions, oldContent.length, newContent.length);
+                false, false, annotated, additions, deletions, oldContent.length, newContent.length);
     }
 }

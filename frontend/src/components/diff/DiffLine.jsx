@@ -1,6 +1,7 @@
 import { Box } from "@primer/react";
 
 import { diffBackgroundFor, diffForegroundFor } from "../../theme/diffTints";
+import { splitBySegments } from "../../utils/diff";
 
 /**
  * One line of a hunk, exactly as the engine classified it.
@@ -104,9 +105,50 @@ const DiffLine = ({ line, scheme }) => {
           verticalAlign: "top",
         }}
       >
-        {line.content === "" ? " " : line.content}
+        <LineContent line={line} tone={tone} />
       </Box>
     </Box>
+  );
+};
+
+/**
+ * The code itself, with the characters that actually changed marked.
+ *
+ * A one-character edit otherwise reads as a whole line removed and a whole line
+ * added, leaving the reader to find the difference. The runs come from the
+ * server; an older response without them renders as one plain piece, which is
+ * exactly what this component did before they existed.
+ */
+const LineContent = ({ line, tone }) => {
+  if (line.content === "") return " ";
+
+  const pieces = splitBySegments(line.content, line.segments);
+  if (pieces.length === 1 && !pieces[0].changed) return line.content;
+
+  return pieces.map((piece, index) =>
+    piece.changed ? (
+      /* `mark` rather than a styled span: the meaning is "this part is the
+         point", which is what the element is for, and assistive technology can
+         convey it. Weight and underline carry that meaning too, so the marking
+         never depends on the colour being perceived. */
+      <Box
+        as="mark"
+        key={index}
+        sx={{
+          bg: "transparent",
+          color: tone.signColor,
+          fontWeight: 600,
+          borderBottom: "2px solid",
+          borderColor: tone.edge,
+        }}
+      >
+        {piece.text}
+      </Box>
+    ) : (
+      <Box as="span" key={index}>
+        {piece.text}
+      </Box>
+    ),
   );
 };
 
