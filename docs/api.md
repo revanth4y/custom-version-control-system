@@ -550,7 +550,11 @@ fast-forward has no merge commit, a conflict has neither commit nor tree.
 {
   "outcome": "CONFLICTED",
   "conflicts": [
-    { "kind": "CONTENT", "path": "shared.txt", "base": { "mode": "100644", "id": "..." }, "ours": { ... }, "theirs": { ... } }
+    {
+      "kind": "CONTENT", "path": "shared.txt",
+      "base": { "mode": "100644", "id": "..." }, "ours": { ... }, "theirs": { ... },
+      "regions": [ { "base": { "start": 3, "end": 4 }, "ours": { ... }, "theirs": { ... } } ]
+    }
   ],
   "cleanlyMerged": [ { "path": "other.txt", "status": "ADDED" } ]
 }
@@ -559,6 +563,18 @@ fast-forward has no merge commit, a conflict has neither commit nor tree.
 `kind` is one of `CONTENT`, `ADD_ADD`, `MODIFY_DELETE`, `MODE`, `TYPE`. **A
 conflicted merge writes nothing and moves nothing** — every conflict is reported
 in one pass, and `cleanlyMerged` shows what *would* have applied.
+
+Where both sides changed the same text file, the engine merges it line by line
+first, so edits that do not meet no longer conflict at all. `regions` names the
+stretches that still do, as half-open one-based line ranges into the base, ours
+and theirs. An empty range on a side — `start` equal to `end` — says that side
+contributes no lines there, which is how a deletion reads.
+
+`regions` is **omitted entirely rather than sent empty** wherever the line-level
+question was never asked: binary content, a directory on either side, a path with
+no base to measure against, and files past the engine's bounds. Its absence means
+nothing was established, not that nothing conflicts. A client that ignores the
+field sees exactly what it saw before.
 
 ---
 
