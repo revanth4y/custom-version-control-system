@@ -129,8 +129,17 @@ public final class BranchService {
      * other unknown revision. One that matches several is a different situation
      * and is reported as such: see {@link AmbiguousObjectIdException}.
      *
+     * <p>Any of those may carry a <strong>relative suffix</strong> — {@code ^n}
+     * for a parent by position, {@code ~n} for a generation of first parents,
+     * chained left to right, so {@code main~2^2} is the second parent of the
+     * commit two back from {@code main}. The suffix is only considered once the
+     * whole string has failed to name a commit outright, which is what keeps a
+     * name ahead of an expression.
+     *
      * @throws AmbiguousObjectIdException if an abbreviation names more than one
      *     object
+     * @throws IllegalArgumentException if a relative expression is malformed —
+     *     distinct from one that is merely unresolvable, which is empty
      */
     public Optional<ObjectId> resolve(String revision) {
         if (revision == null || revision.isBlank()) {
@@ -138,6 +147,17 @@ public final class BranchService {
         }
         String trimmed = revision.trim();
 
+        Optional<ObjectId> named = resolveNamed(trimmed);
+        if (named.isPresent()) {
+            return named;
+        }
+        // Only once the whole string has failed as a name of its own, so a ref
+        // called "release^2" is that ref rather than a walk from "release".
+        return resolveRelative(trimmed);
+    }
+
+    /** Every form that names a commit outright, in the order documented above. */
+    private Optional<ObjectId> resolveNamed(String trimmed) {
         if (trimmed.equals("HEAD")) {
             return refStore.resolveHead();
         }
@@ -157,6 +177,111 @@ public final class BranchService {
             // Not a complete id. It may still be the start of one.
             return resolveAbbreviated(trimmed);
         }
+    }
+
+    /**
+     * Resolves a revision written relative to another, such as {@code HEAD~2}.
+     *
+     * <p><strong>Longest base first.</strong> Splitting at the first {@code ~}
+     * or {@code ^} would be simpler and wrong: it would read a ref whose own
+     * name contains one as a walk from some shorter name. {@link BranchName}
+     * forbids both characters, so no branch created through this service can
+     * contain them — but a reference is a file, and the rule that a name beats
+     * an expression should not rest on the assumption that nothing ever wrote
+     * one directly.
+     *
+     * <p>Three outcomes, and they are genuinely different. A base that resolves
+     * and a walk that lands gives the commit. A base that does not resolve is
+     * absent, exactly as the same base would be on its own. An expression the
+     * grammar cannot read at any split is malformed — a question with no answer
+     * rather than a question whose answer is nothing — and is refused.
+     *
+     * @throws IllegalArgumentException if the expression is not well formed
+     */
+    private Optional<ObjectId> resolveRelative(String revision) {
+        // Counted over the whole expression rather than over one split of it.
+        // A chain past the budget is unreadable however it is divided, and
+        // saying so here also bounds the search below.
+        int stepStarts = countStepStarts(revision);
+        if (stepStarts > RevisionSuffix.MAX_STEPS) {
+            throw new IllegalArgumentException("Malformed revision: " + revision);
+        }
+
+        boolean readable = false;
+
+        // Descending, so the longest possible base is tried first.
+        for (int split = revision.length() - 1; split > 0; split--) {
+            if (!RevisionSuffix.isStepStart(revision.charAt(split))) {
+                continue;
+            }
+            Optional<List<RevisionSuffix.Step>> steps =
+                    RevisionSuffix.parse(revision.substring(split));
+            if (steps.isEmpty()) {
+                continue;
+            }
+            readable = true;
+
+            Optional<ObjectId> start = resolveNamed(revision.substring(0, split));
+            if (start.isPresent()) {
+                return walk(start.get(), steps.get());
+            }
+        }
+
+        if (!readable && containsStepStart(revision)) {
+            throw new IllegalArgumentException("Malformed revision: " + revision);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Applies the steps in order.
+     *
+     * <p>Every failure here is an absence rather than a fault: a commit has the
+     * parents it has, and history has a beginning. Asking for the second parent
+     * of a commit with one, or for an ancestor further back than the root, is a
+     * question about a commit that does not exist — the same answer as any other
+     * unknown revision, and never an error about the walk itself.
+     */
+    private Optional<ObjectId> walk(ObjectId start, List<RevisionSuffix.Step> steps) {
+        ObjectId current = start;
+
+        for (RevisionSuffix.Step step : steps) {
+            if (step.count() == 0) {
+                // ^0 and ~0 are the commit itself, so nothing is read.
+                continue;
+            }
+            if (step.kind() == RevisionSuffix.Step.Kind.PARENT) {
+                List<ObjectId> parents = objectStore.readCommit(current).parents();
+                if (step.count() > parents.size()) {
+                    return Optional.empty();
+                }
+                current = parents.get(step.count() - 1);
+                continue;
+            }
+            for (int generation = 0; generation < step.count(); generation++) {
+                List<ObjectId> parents = objectStore.readCommit(current).parents();
+                if (parents.isEmpty()) {
+                    // Past the root: there is no such commit to name.
+                    return Optional.empty();
+                }
+                current = parents.getFirst();
+            }
+        }
+        return Optional.of(current);
+    }
+
+    private static boolean containsStepStart(String revision) {
+        return countStepStarts(revision) > 0;
+    }
+
+    private static int countStepStarts(String revision) {
+        int found = 0;
+        for (int index = 0; index < revision.length(); index++) {
+            if (RevisionSuffix.isStepStart(revision.charAt(index))) {
+                found++;
+            }
+        }
+        return found;
     }
 
     /**

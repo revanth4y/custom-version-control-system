@@ -69,8 +69,8 @@ public class ContentApiService {
         String revision = revisionOrHead(ref);
 
         List<TreeEntry> entries = repository.reader().listDirectory(revision, path)
-                .orElseThrow(() -> new NotFoundException("No such directory at " + revision + ": "
-                        + (path == null || path.isBlank() ? "/" : path)));
+                .orElseThrow(() -> missing(repository, revision, "directory",
+                        path == null || path.isBlank() ? "/" : path));
 
         if (!withLastCommit) {
             return new DirectoryResponse(
@@ -91,6 +91,27 @@ public class ContentApiService {
                         .toList());
     }
 
+    /**
+     * Names the failure the caller actually hit.
+     *
+     * <p>A revision that does not resolve and a path that is not in it are
+     * different mistakes, and reporting the first as the second sends the reader
+     * looking at their path when the problem was their revision — which is
+     * exactly what "no such directory at HEAD~1: /" used to do, about a root
+     * directory that exists in every commit ever made.
+     *
+     * <p>The revision is only re-resolved on the failing path, where one more
+     * reference lookup costs nothing and buys an answer the caller can act on.
+     */
+    private NotFoundException missing(
+            VcsRepository repository, String revision, String what, String path) {
+
+        if (repository.reader().resolve(revision).isEmpty()) {
+            return new NotFoundException("No such revision: " + revision);
+        }
+        return new NotFoundException("No such " + what + " at " + revision + ": " + path);
+    }
+
     /** The listing path of an entry, matching what TreeEntryResponse reports. */
     private static String pathOf(TreeEntry entry, String parentPath) {
         return parentPath == null || parentPath.isBlank()
@@ -107,10 +128,10 @@ public class ContentApiService {
         }
         TreeEntry entry = repository.reader().entryAt(revision, path)
                 .filter(candidate -> !candidate.isDirectory())
-                .orElseThrow(() -> new NotFoundException("No such file at " + revision + ": " + path));
+                .orElseThrow(() -> missing(repository, revision, "file", path));
 
         byte[] content = repository.reader().readFile(revision, path)
-                .orElseThrow(() -> new NotFoundException("No such file at " + revision + ": " + path));
+                .orElseThrow(() -> missing(repository, revision, "file", path));
 
         /* The same bound every write already passes, so this refuses nothing the
            API itself could have stored. It stands as the statement of the
