@@ -97,6 +97,42 @@ export function splitPath(path) {
     : { directory: full.slice(0, cut + 1), name: full.slice(cut + 1) };
 }
 
+/**
+ * Splits a line into alternating unchanged and changed pieces.
+ *
+ * The server sends the changed runs as half-open character offsets into the
+ * line's own content, in the same units a JavaScript string uses, so this is a
+ * slice rather than a search. No diffing happens here either - which parts
+ * changed was decided by the engine, for the same reason the line diff is.
+ *
+ * A line with no runs comes back as a single unchanged piece, so the caller
+ * renders one code path whether or not the server had anything to say.
+ */
+export function splitBySegments(content, segments) {
+  const text = content ?? "";
+  const runs = Array.isArray(segments) ? segments : [];
+  if (runs.length === 0) return [{ text, changed: false }];
+
+  const pieces = [];
+  let cursor = 0;
+
+  for (const run of runs) {
+    // Reading forward only. The runs arrive ascending and non-overlapping, and
+    // advancing the cursor is what turns them into a partition rather than a
+    // set of possibly-repeated slices.
+    const from = Math.max(cursor, run?.start ?? 0);
+    const to = run?.end ?? 0;
+    if (to <= from) continue;
+
+    if (from > cursor) pieces.push({ text: text.slice(cursor, from), changed: false });
+    pieces.push({ text: text.slice(from, to), changed: true });
+    cursor = to;
+  }
+
+  if (cursor < text.length) pieces.push({ text: text.slice(cursor), changed: false });
+  return pieces;
+}
+
 /** Human sizes for the two sides of a binary change. */
 export const STATUS_LABEL = {
   ADDED: "added",
