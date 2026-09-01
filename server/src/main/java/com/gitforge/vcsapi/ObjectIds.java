@@ -26,6 +26,39 @@ final class ObjectIds {
     }
 
     /**
+     * Whether this is a relative expression written against an id.
+     *
+     * <p>This path variable has only ever named an object, never a branch and
+     * never {@code HEAD} — those are a {@code ref} elsewhere, and a name here is
+     * still a bad request. Relative expressions follow the same line: an id or
+     * an abbreviation may carry a suffix, and a name may not, so
+     * {@code <id>~1} resolves for the same reason {@code <id>} does and
+     * {@code HEAD~1} is refused for the same reason {@code HEAD} is.
+     *
+     * <p>Anything without a suffix character is left entirely alone, which is
+     * what keeps every existing answer here — including the bad request for text
+     * that is not hexadecimal — exactly as it was.
+     */
+    private static boolean isRelativeToAnId(String text) {
+        for (int index = 1; index < text.length(); index++) {
+            if (text.charAt(index) == '~' || text.charAt(index) == '^') {
+                String base = text.substring(0, index);
+                return ObjectId.isValidPrefix(base) || isFullId(base);
+            }
+        }
+        return false;
+    }
+
+    private static boolean isFullId(String text) {
+        try {
+            ObjectId.fromHex(text);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    /**
      * Resolves a full id or an unambiguous abbreviation of one.
      *
      * <p>The complete id is tried first and returned without touching the store,
@@ -48,6 +81,11 @@ final class ObjectIds {
             return ObjectId.fromHex(trimmed);
         } catch (IllegalArgumentException ex) {
             // Not the whole thing. It may be the start of it.
+        }
+
+        if (isRelativeToAnId(trimmed)) {
+            return repository.reader().resolve(trimmed)
+                    .orElseThrow(() -> new NotFoundException("No such commit: " + trimmed));
         }
 
         if (!ObjectId.isValidPrefix(trimmed)) {

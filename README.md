@@ -93,6 +93,14 @@ an unambiguous abbreviation of at least four hexadecimal characters. A branch
 name always wins over an id, and an abbreviation matching several objects is
 refused with the collisions named rather than resolved to one of them.
 
+Any of those may carry a **relative suffix**: `^n` for the n-th parent, `~n` for
+n generations back by first parent, chained left to right, so `main~2^2` is the
+second parent of the commit two before `main`. The suffix is read only once the
+whole string has failed to name a commit outright, which keeps a name ahead of an
+expression. Two edits apart in history are two different commits; asking for a
+parent a commit does not have, or for an ancestor older than the root, is simply
+not found.
+
 **Merge bases** are the lowest common ancestors: commits reachable from both
 tips, minus any that another candidate can itself reach. The result is sorted by
 object id — arbitrary, but stable and symmetric, so swapping the arguments cannot
