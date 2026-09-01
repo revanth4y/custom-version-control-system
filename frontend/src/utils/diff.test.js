@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { FileState, anchorFor, fileState, modeChange, pathFromAnchor, splitPath, summarise } from "./diff";
+import {
+  FileState,
+  anchorFor,
+  fileState,
+  modeChange,
+  pathFromAnchor,
+  splitBySegments,
+  splitPath,
+  summarise,
+} from "./diff";
 import {
   binaryDiff,
   emptyDiff,
@@ -204,5 +213,69 @@ describe("merge commit detail", () => {
     // The engine documents this: the second parent's work is already present on
     // the branch being merged into.
     expect(mergeCommitDetail.changes.changes.length).toBeGreaterThan(0);
+  });
+});
+
+describe("splitBySegments", () => {
+  const joined = (pieces) => pieces.map((p) => p.text).join("");
+
+  it("returns one unchanged piece when there are no runs", () => {
+    expect(splitBySegments("timeout = 30", [])).toEqual([{ text: "timeout = 30", changed: false }]);
+  });
+
+  it("returns one unchanged piece when the field is absent", () => {
+    // A v2.0.8 response carries no such field; the line must still render.
+    expect(splitBySegments("timeout = 30", undefined)).toEqual([
+      { text: "timeout = 30", changed: false },
+    ]);
+  });
+
+  it("splits around a single changed run", () => {
+    expect(splitBySegments("timeout = 30", [{ start: 10, end: 11 }])).toEqual([
+      { text: "timeout = ", changed: false },
+      { text: "3", changed: true },
+      { text: "0", changed: false },
+    ]);
+  });
+
+  it("splits around several runs", () => {
+    const pieces = splitBySegments("alpha P beta Q gamma", [
+      { start: 6, end: 7 },
+      { start: 13, end: 14 },
+    ]);
+
+    expect(pieces.filter((p) => p.changed).map((p) => p.text)).toEqual(["P", "Q"]);
+  });
+
+  it("handles a run at the very start", () => {
+    expect(splitBySegments("abc", [{ start: 0, end: 1 }])).toEqual([
+      { text: "a", changed: true },
+      { text: "bc", changed: false },
+    ]);
+  });
+
+  it("handles a run reaching the very end", () => {
+    expect(splitBySegments("abc", [{ start: 2, end: 3 }])).toEqual([
+      { text: "ab", changed: false },
+      { text: "c", changed: true },
+    ]);
+  });
+
+  it("covers the whole line when everything changed", () => {
+    expect(splitBySegments("abc", [{ start: 0, end: 3 }])).toEqual([{ text: "abc", changed: true }]);
+  });
+
+  it("never loses or repeats a character", () => {
+    const content = "one two three four";
+    const pieces = splitBySegments(content, [
+      { start: 4, end: 7 },
+      { start: 14, end: 18 },
+    ]);
+
+    expect(joined(pieces)).toBe(content);
+  });
+
+  it("treats an empty line as a single empty piece", () => {
+    expect(splitBySegments("", [])).toEqual([{ text: "", changed: false }]);
   });
 });
