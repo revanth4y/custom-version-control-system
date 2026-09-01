@@ -13,16 +13,22 @@ import com.gitforge.repo.RepoVisibility;
 import com.gitforge.repo.dto.CreateRepoRequest;
 import com.gitforge.user.User;
 import com.gitforge.user.UserService;
+import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.FileMode;
 import com.gitforge.vcs.object.ObjectId;
 import com.gitforge.vcs.object.Signature;
 import com.gitforge.vcs.repository.FileChange;
 import com.gitforge.vcs.repository.VcsRepository;
+import com.gitforge.vcs.repository.VcsRepositoryFactory;
 import com.gitforge.vcsapi.VcsRepositoryProvider;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -71,6 +77,7 @@ public class DemoDataset {
     private final IssueService issues;
     private final IssueCommentService comments;
     private final VcsRepositoryProvider repositories;
+    private final VcsRepositoryFactory storage;
     private final DemoProperties properties;
 
     public DemoDataset(
@@ -80,6 +87,7 @@ public class DemoDataset {
             IssueService issues,
             IssueCommentService comments,
             VcsRepositoryProvider repositories,
+            VcsRepositoryFactory storage,
             DemoProperties properties) {
 
         this.authService = authService;
@@ -88,6 +96,7 @@ public class DemoDataset {
         this.issues = issues;
         this.comments = comments;
         this.repositories = repositories;
+        this.storage = storage;
         this.properties = properties;
     }
 
@@ -106,6 +115,7 @@ public class DemoDataset {
         longHistory(owner);
         branching(owner);
         empty(owner);
+        damagedObjects(owner);
         privateWork(owner);
         collaboratorsOwnWork(collaborator);
 
@@ -363,6 +373,92 @@ public class DemoDataset {
     /** No commits at all, for the empty states. */
     private void empty(User owner) {
         create(owner, "no-history", "An empty repository, for the empty states.");
+    }
+
+    /**
+     * <strong>Intentionally damaged demo data.</strong>
+     *
+     * <p>The integrity check is the one feature that cannot be demonstrated by a
+     * healthy repository: a scan that has only ever reported "all clear" has not
+     * been shown to detect anything. This repository is committed normally
+     * through the engine and two of its blobs are then deliberately overwritten
+     * on disk, so the scan has real corruption to find.
+     *
+     * <p>Deterministic despite the epoch being free: the damage is applied to
+     * <em>blobs</em>, whose ids come from their content rather than from a
+     * commit timestamp, so the same two objects are corrupted on every seed.
+     *
+     * <p>Contained by construction. Each repository has its own object store, so
+     * nothing here can reach another repository's objects. Only blobs are
+     * touched — the commit and its trees stay intact, so the repository still
+     * lists, browses and reports insights, and the fixtures other tests rely on
+     * are untouched.
+     */
+    private void damagedObjects(User owner) {
+        VcsRepository repo = create(owner, "damaged-objects",
+                "Intentionally damaged demo data, so the integrity check has something to find.");
+
+        String healthy = "This blob is intact and hashes to the id it is filed under.\n";
+        String mismatched = "This blob is about to be replaced by different, valid content.\n";
+        String unreadable = "This blob is about to be replaced by bytes that are not an object.\n";
+
+        commit(repo, owner, 9, "main", "Initial commit",
+                put("README.md", """
+                        # damaged-objects
+
+                        Deliberately corrupted demo data. Two of this repository's blobs
+                        have been overwritten on disk so the Integrity Centre has real
+                        damage to detect: one no longer hashes to its id, the other is no
+                        longer a readable object at all.
+
+                        Nothing else is wrong with it, and no other repository is affected.
+                        """),
+                put("healthy.txt", healthy),
+                put("mismatched.txt", mismatched),
+                put("unreadable.txt", unreadable));
+
+        // Valid, readable content filed under the wrong id: the stored bytes
+        // rebuild into a perfectly good object that simply is not the one asked
+        // for. Only re-hashing catches this, which is the whole point.
+        overwrite(repo, blobId(mismatched), read(repo, blobId(healthy)));
+
+        // Bytes that are not a zlib stream at all, so the object cannot even be
+        // reconstructed before its hash could be compared.
+        overwrite(repo, blobId(unreadable), bytes("not an object, and not compressed either\n"));
+    }
+
+    private static ObjectId blobId(String content) {
+        return new Blob(bytes(content)).id();
+    }
+
+    /** Where one object is filed: {@code objects/<first two hex>/<remaining 38>}. */
+    private Path objectFile(VcsRepository repo, ObjectId id) {
+        String hex = id.toHex();
+        return storage.pathFor(repo.id()).resolve("objects").resolve(hex.substring(0, 2)).resolve(hex.substring(2));
+    }
+
+    private byte[] read(VcsRepository repo, ObjectId id) {
+        try {
+            return Files.readAllBytes(objectFile(repo, id));
+        } catch (IOException ex) {
+            throw new UncheckedIOException("Could not read demo object " + id, ex);
+        }
+    }
+
+    /**
+     * Replaces one stored object's bytes.
+     *
+     * <p>The only place in the seeder that writes to storage directly, because
+     * corruption is precisely what the engine's own write path exists to prevent:
+     * {@code write} derives the filename from the content, so it cannot produce a
+     * file whose name disagrees with what is in it.
+     */
+    private void overwrite(VcsRepository repo, ObjectId id, byte[] replacement) {
+        try {
+            Files.write(objectFile(repo, id), replacement);
+        } catch (IOException ex) {
+            throw new UncheckedIOException("Could not damage demo object " + id, ex);
+        }
     }
 
     /** Visible to its owner and to nobody else. */
