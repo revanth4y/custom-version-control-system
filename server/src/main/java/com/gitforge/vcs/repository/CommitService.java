@@ -44,12 +44,19 @@ public final class CommitService {
     private final RefStore refs;
     private final BranchService branches;
     private final TreeUpdater updater;
+    private final RepositoryLock lock;
 
     CommitService(ObjectStore objects, RefStore refs, BranchService branches) {
+        this(objects, refs, branches, new RepositoryLock());
+    }
+
+    CommitService(
+            ObjectStore objects, RefStore refs, BranchService branches, RepositoryLock lock) {
         this.objects = objects;
         this.refs = refs;
         this.branches = branches;
         this.updater = new TreeUpdater(objects);
+        this.lock = lock;
     }
 
     /**
@@ -67,6 +74,20 @@ public final class CommitService {
     }
 
     public ObjectId commit(
+            String branch,
+            List<FileChange> changes,
+            Signature author,
+            Signature committer,
+            String message) {
+
+        // Shared with other writers, excluded from collection. The whole sequence
+        // below — blobs, trees, commit, then the reference — is unreachable from
+        // any branch until its very last line, so a sweep running inside it would
+        // see live work as garbage.
+        return lock.shared(() -> write(branch, changes, author, committer, message));
+    }
+
+    private ObjectId write(
             String branch,
             List<FileChange> changes,
             Signature author,

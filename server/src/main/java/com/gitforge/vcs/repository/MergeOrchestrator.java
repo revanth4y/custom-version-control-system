@@ -41,13 +41,24 @@ public final class MergeOrchestrator {
     private final BranchService branches;
     private final CommitGraph graph;
     private final ThreeWayMerger merger;
+    private final RepositoryLock lock;
 
     MergeOrchestrator(ObjectStore objects, RefStore refs, BranchService branches, CommitGraph graph) {
+        this(objects, refs, branches, graph, new RepositoryLock());
+    }
+
+    MergeOrchestrator(
+            ObjectStore objects,
+            RefStore refs,
+            BranchService branches,
+            CommitGraph graph,
+            RepositoryLock lock) {
         this.objects = objects;
         this.refs = refs;
         this.branches = branches;
         this.graph = graph;
         this.merger = new ThreeWayMerger(objects);
+        this.lock = lock;
     }
 
     /**
@@ -63,6 +74,19 @@ public final class MergeOrchestrator {
     }
 
     public MergeOutcome merge(
+            String ourBranch,
+            String theirBranch,
+            Signature author,
+            Signature committer,
+            String message) {
+
+        // A merge writes blobs, trees and a commit before it moves the branch,
+        // exactly as an ordinary commit does, so it needs the same exclusion from
+        // collection for the same reason.
+        return lock.shared(() -> apply(ourBranch, theirBranch, author, committer, message));
+    }
+
+    private MergeOutcome apply(
             String ourBranch,
             String theirBranch,
             Signature author,
