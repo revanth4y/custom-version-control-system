@@ -192,6 +192,50 @@ public final class FileSystemObjectStore implements ObjectStore {
     }
 
     @Override
+    public long sizeOf(ObjectId id) {
+        requireId(id);
+        Path path = pathFor(id);
+        try {
+            return Files.isRegularFile(path) ? Files.size(path) : 0L;
+        } catch (IOException ex) {
+            throw new ObjectStoreException("Could not measure object " + id, ex);
+        }
+    }
+
+    /**
+     * <p>Only the object file is removed. The shard directory is left in place
+     * even when it becomes empty: an empty directory costs an inode, a removed one
+     * costs a race with a concurrent write that has just created the same shard
+     * for a different object.
+     */
+    @Override
+    public boolean delete(ObjectId id) {
+        requireId(id);
+        try {
+            return Files.deleteIfExists(pathFor(id));
+        } catch (IOException ex) {
+            throw new ObjectStoreException("Could not delete object " + id, ex);
+        }
+    }
+
+    @Override
+    public List<String> temporaryFiles() {
+        if (!Files.isDirectory(objectsRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(objectsRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().startsWith(TEMP_PREFIX))
+                    .map(path -> objectsRoot.relativize(path).toString().replace('\\', '/'))
+                    .sorted()
+                    .toList();
+        } catch (IOException ex) {
+            throw new ObjectStoreException("Could not enumerate objects in " + objectsRoot, ex);
+        }
+    }
+
+    @Override
     public List<ObjectId> findByPrefix(String hexPrefix) {
         String prefix = ObjectId.normalisePrefix(hexPrefix);
 

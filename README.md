@@ -379,8 +379,12 @@ nothing infers a language from a file, so the interface does not show them. A
 **No blame, and no raw file endpoint.** `GET /blob` answers with JSON, so "raw"
 is a view in the browser rather than a URL that serves the bytes.
 
-**No garbage collection.** Objects left unreachable — by a deleted branch, say —
-stay on disk. Nothing reads them, and nothing reclaims them.
+**Garbage collection is manual.** Objects left unreachable — by a deleted branch,
+say — stay on disk until somebody asks for them to go. `GET .../gc` reports what
+is collectible and `POST .../gc` removes it, owner-only. Nothing collects on its
+own: not deleting a branch, not committing, not merging, not startup. There is no
+schedule and no background sweep, so a repository nobody sweeps keeps everything
+it has ever written.
 
 **Single-node storage.** The object store is a local filesystem directory. There
 is no replication and no sharding.

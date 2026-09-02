@@ -620,6 +620,68 @@ identity.
 
 ---
 
+## Garbage collection
+
+Objects become unreachable when the last reference to them goes — a deleted
+branch, a merge that was computed and refused. Nothing removes them on its own.
+
+### `GET /repositories/{owner}/{name}/gc` · anonymous
+
+What a collection would remove. Removes nothing.
+
+```json
+{
+  "storedObjects": 45,
+  "reachableObjects": 41,
+  "roots": 3,
+  "unreachableObjects": 4,
+  "unreachableBytes": 512,
+  "unreachable": [ { "id": "4dc91d5e…", "type": "commit", "bytes": 174 } ],
+  "collectedObjects": 0,
+  "collected": [],
+  "reclaimedBytes": 0,
+  "retained": [],
+  "temporaryFiles": [],
+  "truncated": false,
+  "collectionPerformed": false,
+  "checkedAt": "2026-09-01T16:00:00Z",
+  "durationMs": 3
+}
+```
+
+`roots` counts every reference the traversal started from: each branch, HEAD, and
+the working tree's recorded tree where there is one. Overlaps are counted rather
+than folded together, so the figure says how many references were consulted.
+
+`retained` lists unreachable objects that were deliberately kept, each with a
+reason. `damaged` is the only one: an object that will not read back cannot be
+identified, and unidentifiable bytes are not deleted.
+
+`temporaryFiles` names staging files found in the object store. They are reported
+and never removed — one is either a write happening at this moment or the residue
+of a process that was killed mid-write, and nothing on disk distinguishes the two.
+
+`truncated` is true when the store holds more objects than one sweep will
+consider. Unlike `/integrity`, which truncates and reports what it managed, a
+truncated sweep examines nothing and collects nothing: a reachability calculation
+that stopped early would call reachable objects garbage.
+
+### `POST /repositories/{owner}/{name}/gc` · owner only
+
+Removes every object no reference reaches, and answers with the same shape —
+`collectionPerformed` true, `collected` naming what went, `reclaimedBytes` saying
+what that freed.
+
+Idempotent. A second call finds nothing, and a sweep of a repository with no
+garbage is a no-op.
+
+Deleting a branch never triggers this, and neither does committing, merging, or
+starting the application. Reclaiming storage is something somebody asks for.
+
+There is no reflog: a collected object is gone.
+
+---
+
 ## Issues
 
 ### `POST /repositories/{owner}/{name}/issues`

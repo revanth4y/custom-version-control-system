@@ -93,4 +93,63 @@ public interface ObjectStore {
      * objects for this to be the right trade.
      */
     List<ObjectId> listIds();
+
+    /**
+     * The size in bytes of the object as it is stored.
+     *
+     * <p>Storage size, not content size: an object is held compressed, and what a
+     * sweep reclaims is the compressed form. Reporting the uncompressed length
+     * would overstate what deleting it actually frees.
+     *
+     * <p>Default is to refuse rather than guess. A store that keeps objects
+     * somewhere other than files has no meaningful answer, and a fabricated one
+     * would be reported as reclaimed space.
+     *
+     * @throws UnsupportedOperationException if this store cannot measure objects
+     */
+    default long sizeOf(ObjectId id) {
+        throw new UnsupportedOperationException(
+                getClass().getSimpleName() + " cannot measure stored objects");
+    }
+
+    /**
+     * Removes an object, whatever references it.
+     *
+     * <p>This is the only operation in the engine that destroys data, and it is
+     * deliberately unguarded: the store is not the right place to decide whether
+     * an object is still needed, because it cannot see references. Reachability is
+     * the caller's to establish, and
+     * {@link com.gitforge.vcs.gc.GarbageCollector} is the only caller that does.
+     *
+     * <p>Absence is success. Deleting an object twice is not an error, which is
+     * what lets a sweep be safely repeatable.
+     *
+     * <p>Default is to refuse. A store that cannot remove objects must say so
+     * rather than silently report a deletion that never happened.
+     *
+     * @return true if an object was removed, false if there was nothing there
+     * @throws UnsupportedOperationException if this store cannot remove objects
+     */
+    default boolean delete(ObjectId id) {
+        throw new UnsupportedOperationException(
+                getClass().getSimpleName() + " cannot remove objects");
+    }
+
+    /**
+     * Names of temporary files left in the store, which {@link #listIds()} hides.
+     *
+     * <p>Every enumeration on this interface filters them out, because a temporary
+     * file is not an object and reading it as one would fail. That filtering is
+     * also why nothing has ever been able to see one, and a file nothing can see
+     * is a file nothing can report.
+     *
+     * <p>Returns names rather than ids: a temporary file has no id, which is
+     * precisely what distinguishes it.
+     *
+     * <p>Default is none, which is the truth for a store that does not stage
+     * writes through temporary files.
+     */
+    default List<String> temporaryFiles() {
+        return List.of();
+    }
 }
