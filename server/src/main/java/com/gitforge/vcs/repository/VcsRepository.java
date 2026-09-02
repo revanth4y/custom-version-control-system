@@ -4,6 +4,7 @@ import com.gitforge.vcs.gc.GarbageCollector;
 import com.gitforge.vcs.graph.CommitGraph;
 import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.ref.RefStore;
+import com.gitforge.vcs.ref.TagService;
 import com.gitforge.vcs.remote.ReceiveService;
 import com.gitforge.vcs.storage.ObjectStore;
 
@@ -33,6 +34,7 @@ public final class VcsRepository {
     private final ObjectStore objects;
     private final RefStore refs;
     private final BranchService branches;
+    private final TagService tags;
     private final RepositoryReader reader;
     private final CommitService commits;
     private final MergeOrchestrator merges;
@@ -59,6 +61,7 @@ public final class VcsRepository {
         this.objects = objects;
         this.refs = refs;
         this.branches = new BranchService(refs, objects, lock);
+        this.tags = new TagService(refs, objects, lock);
 
         CommitGraph graph = new CommitGraph(objects);
         this.reader = new RepositoryReader(objects, branches, graph);
@@ -90,6 +93,11 @@ public final class VcsRepository {
     /** Branch and HEAD operations. */
     public BranchService branches() {
         return branches;
+    }
+
+    /** Tag creation, listing, peeling and deletion. */
+    public TagService tags() {
+        return tags;
     }
 
     /** Reads: browsing, file contents, history, commit details, comparison. */

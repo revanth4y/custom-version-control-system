@@ -3,6 +3,7 @@ package com.gitforge.vcs.remote;
 import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
@@ -114,6 +115,16 @@ public final class PushService {
                     commit.parents().forEach(pending::push);
                 }
                 case Tree tree -> tree.entries().stream().map(TreeEntry::id).forEach(pending::push);
+
+                // The closure being built is a branch's history, which is commits,
+                // trees and blobs. A tag cannot appear in it, and if one somehow
+                // did it must not be sent: refusing here is what keeps "tags are
+                // not transferred" true of the sending side as well as the
+                // receiving one.
+                case Tag tag -> throw new RemoteException(
+                        "Local object " + tag.id() + " is a tag; tags are not transferred "
+                                + "between repositories, so nothing was sent");
+
                 case Blob ignored -> {
                 }
             }

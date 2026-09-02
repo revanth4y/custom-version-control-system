@@ -34,6 +34,7 @@ public final class FileSystemRefStore implements RefStore {
     private static final String REFS_DIRECTORY = "refs";
     private static final String HEADS_DIRECTORY = "heads";
     private static final String REMOTES_DIRECTORY = "remotes";
+    private static final String TAGS_DIRECTORY = "tags";
     private static final String HEAD_FILE = "HEAD";
     private static final String SYMBOLIC_PREFIX = "ref: ";
     private static final String HEADS_PREFIX = "refs/heads/";
@@ -43,6 +44,7 @@ public final class FileSystemRefStore implements RefStore {
     private final Path repositoryRoot;
     private final Path headsRoot;
     private final Path remotesRoot;
+    private final Path tagsRoot;
 
     public FileSystemRefStore(Path repositoryRoot) {
         if (repositoryRoot == null) {
@@ -51,6 +53,7 @@ public final class FileSystemRefStore implements RefStore {
         this.repositoryRoot = repositoryRoot.toAbsolutePath().normalize();
         this.headsRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(HEADS_DIRECTORY);
         this.remotesRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(REMOTES_DIRECTORY);
+        this.tagsRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(TAGS_DIRECTORY);
         try {
             Files.createDirectories(headsRoot);
         } catch (IOException ex) {
@@ -238,6 +241,93 @@ public final class FileSystemRefStore implements RefStore {
         return removed;
     }
 
+    @Override
+    public List<String> listTags() {
+        if (!Files.isDirectory(tagsRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(tagsRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
+                    // Nested names are the relative path with forward slashes, so
+                    // release/v1.0 reads the same on every platform.
+                    .map(path -> tagsRoot.relativize(path).toString().replace('\\', '/'))
+                    .sorted(Comparator.naturalOrder())
+                    .toList();
+        } catch (IOException ex) {
+            throw new RefException("Could not list tags in " + tagsRoot, ex);
+        }
+    }
+
+    @Override
+    public Optional<ObjectId> getTag(String name) {
+        Path file = tagPath(name);
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(readObjectId(file, "Tag " + name));
+    }
+
+    @Override
+    public boolean tagExists(String name) {
+        return Files.isRegularFile(tagPath(name));
+    }
+
+    @Override
+    public void createTag(String name, ObjectId target) {
+        requireTarget(target);
+        Path file = tagPath(name);
+        if (Files.isRegularFile(file)) {
+            // Immutability enforced where it cannot be worked around: there is no
+            // update path to fall back to, so a caller wanting to move a tag must
+            // delete it deliberately rather than overwrite it by accident.
+            throw new RefException("Tag already exists: " + name);
+        }
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException ex) {
+            throw new RefException("Could not create directory for tag " + name, ex);
+        }
+        writeAtomically(file, target.toHex() + "\n");
+    }
+
+    @Override
+    public boolean deleteTag(String name) {
+        Path file = tagPath(name);
+        if (!Files.isRegularFile(file)) {
+            return false;
+        }
+        try {
+            Files.delete(file);
+            // Only the now-empty parents of a nested name are removed. The tag
+            // object, the commit and everything beneath them are untouched.
+            pruneEmptyParents(file.getParent(), tagsRoot);
+            return true;
+        } catch (IOException ex) {
+            throw new RefException("Could not delete tag " + name, ex);
+        }
+    }
+
+    /**
+     * The file backing a tag, after confirming the resolved path is still inside
+     * {@code refs/tags}.
+     *
+     * <p>{@link TagName} should already have rejected anything dangerous; this
+     * check is independent of it, exactly as {@link #branchPath} is independent of
+     * {@link BranchName}, so a naming rule that turns out to be incomplete still
+     * cannot become a write outside the refs directory.
+     */
+    private Path tagPath(String name) {
+        TagName.validate(name);
+
+        Path resolved = tagsRoot.resolve(name).normalize();
+        if (!resolved.startsWith(tagsRoot)) {
+            throw new RefException("Tag name escapes the reference directory: " + name);
+        }
+        return resolved;
+    }
+
     /**
      * Reads one tracking ref back from its path.
      *
@@ -312,11 +402,27 @@ public final class FileSystemRefStore implements RefStore {
     }
 
     private ObjectId readCommitId(Path file, String description) {
+        return readId(file, description, "commit");
+    }
+
+    /**
+     * As {@link #readCommitId}, for a ref whose target need not be a commit.
+     *
+     * <p>A tag points at a commit when it is lightweight and at a tag object when
+     * it is annotated, so reporting "not a valid commit id" for a damaged tag file
+     * would name the wrong expectation.
+     */
+    private ObjectId readObjectId(Path file, String description) {
+        return readId(file, description, "object");
+    }
+
+    private ObjectId readId(Path file, String description, String kind) {
         String content = readText(file).trim();
         try {
             return ObjectId.fromHex(content);
         } catch (IllegalArgumentException ex) {
-            throw new RefException(description + " does not contain a valid commit id: " + content, ex);
+            throw new RefException(
+                    description + " does not contain a valid " + kind + " id: " + content, ex);
         }
     }
 
@@ -365,6 +471,12 @@ public final class FileSystemRefStore implements RefStore {
     private static void requireCommit(ObjectId commit) {
         if (commit == null) {
             throw new RefException("A branch must point at a commit");
+        }
+    }
+
+    private static void requireTarget(ObjectId target) {
+        if (target == null) {
+            throw new RefException("A tag must point at an object");
         }
     }
 }

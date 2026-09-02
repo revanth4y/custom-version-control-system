@@ -98,6 +98,7 @@ public final class ObjectFormat {
             case BLOB -> new Blob(payload);
             case TREE -> Tree.parse(payload);
             case COMMIT -> Commit.parse(payload);
+            case TAG -> Tag.parse(payload);
         };
     }
 
