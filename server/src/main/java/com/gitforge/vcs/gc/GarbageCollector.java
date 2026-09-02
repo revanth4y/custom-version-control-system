@@ -4,6 +4,7 @@ import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
@@ -302,8 +303,14 @@ public final class GarbageCollector {
                 }
                 case Tree tree -> tree.entries().stream().map(TreeEntry::id).forEach(pending::push);
 
+                // One hop, not a loop. A tag pointing at a tag is handled by the
+                // target going back on the same stack and being read as a tag in
+                // its own right, so a chain of any depth is followed by the walk
+                // that is already running rather than by a special case here.
+                case Tag tag -> pending.push(tag.target());
+
                 // Exhaustive over the sealed VcsObject rather than defaulted: a
-                // fourth object type must not be able to appear here and be
+                // further object type must not be able to appear here and be
                 // traversed as if it referenced nothing.
                 case Blob ignored -> {
                 }
