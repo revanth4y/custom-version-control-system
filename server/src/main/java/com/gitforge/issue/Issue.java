@@ -68,6 +68,17 @@ public class Issue {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * When this issue was closed, or null while it is open.
+     *
+     * <p>Not derivable from {@code updatedAt}, which moves on any edit: an issue
+     * closed in January and retitled in June has an updated_at of June. Null for
+     * issues closed before this was recorded — those are closed but undated, and
+     * inventing a date for them would be worse than admitting the gap.
+     */
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
     protected Issue() {
         // required by JPA
     }
@@ -129,12 +140,38 @@ public class Issue {
         return status;
     }
 
+    /**
+     * Moves the issue between open and closed, recording when closure happened.
+     *
+     * <p>Only a real transition touches the timestamp. Closing an already-closed
+     * issue leaves the original moment alone rather than resetting it to now —
+     * an edit is not a re-closure — and it also leaves a historical NULL as NULL
+     * rather than quietly filling it with the time somebody happened to save an
+     * unrelated change.
+     *
+     * <p>Reopening clears it. A reopened issue is not closed, and keeping the old
+     * date would leave a row claiming a closure that no longer holds.
+     *
+     * <p>The same shape {@code Release.setDraft} uses for its publication stamp,
+     * and here for the same reason: putting it in the entity means every caller
+     * gets it right, including ones that do not exist yet.
+     */
     public void setStatus(IssueStatus status) {
+        if (this.status == IssueStatus.OPEN && status == IssueStatus.CLOSED) {
+            this.closedAt = Instant.now();
+        } else if (this.status == IssueStatus.CLOSED && status == IssueStatus.OPEN) {
+            this.closedAt = null;
+        }
         this.status = status;
     }
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /** When the issue was closed, or empty while open or when it was never recorded. */
+    public Instant getClosedAt() {
+        return closedAt;
     }
 
     public Instant getUpdatedAt() {
