@@ -1,6 +1,7 @@
 package com.gitforge.vcs.repository;
 
 import com.gitforge.vcs.graph.CommitGraph;
+import com.gitforge.vcs.insights.CommitInsights;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectId;
@@ -16,15 +17,10 @@ import com.gitforge.vcs.worktree.WorkTreeState;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * Aggregate facts about a repository, computed from the object store.
@@ -43,6 +39,11 @@ import java.util.TreeMap;
  *
  * <p>Results are deduplicated by object id, so work on a side branch is included
  * and a commit reachable from two roots is still counted once.
+ *
+ * <p>The counting itself lives in {@link CommitInsights}, which reads each commit
+ * once and answers every question from that one pass. Keeping a second copy of
+ * contributor and per-day aggregation here is how the figures would start to
+ * disagree with the ones the Insights endpoints report.
  *
  * <p>Deliberately outside Spring, so the aggregation can be tested without an
  * application context.
@@ -98,37 +99,18 @@ public final class RepositoryStatistics {
     }
 
     public Stats compute() {
-        Set<ObjectId> reachable = reachableCommits();
+        CommitInsights.Summary summary = new CommitInsights(objects).summarise(reachableCommits());
 
-        Map<String, Contributor> byEmail = new LinkedHashMap<>();
-        Map<LocalDate, Integer> byDate = new TreeMap<>();
+        List<Contributor> contributors = summary.contributors().stream()
+                .map(c -> new Contributor(c.name(), c.email(), c.commits()))
+                .toList();
 
-        for (ObjectId id : reachable) {
-            Commit commit = objects.readCommit(id);
-
-            // Identity is the email: a person may commit under several display
-            // names, but the address is what identifies them.
-            byEmail.merge(
-                    commit.author().email(),
-                    new Contributor(commit.author().name(), commit.author().email(), 1),
-                    (existing, added) -> new Contributor(
-                            existing.name(), existing.email(), existing.commits() + 1));
-
-            LocalDate day = commit.author().timestamp().atZone(ZoneOffset.UTC).toLocalDate();
-            byDate.merge(day, 1, Integer::sum);
-        }
-
-        List<Contributor> contributors = new ArrayList<>(byEmail.values());
-        contributors.sort(Comparator
-                .comparingInt(Contributor::commits).reversed()
-                .thenComparing(Contributor::email));
-
-        List<DailyCount> activity = byDate.entrySet().stream()
+        List<DailyCount> activity = summary.countsByDay().entrySet().stream()
                 .map(entry -> new DailyCount(entry.getKey(), entry.getValue()))
                 .toList();
 
         return new Stats(
-                reachable.size(),
+                summary.commits(),
                 branches.listBranches().size(),
                 countFiles(),
                 objects.count(),
