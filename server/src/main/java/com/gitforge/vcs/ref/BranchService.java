@@ -26,6 +26,14 @@ public final class BranchService {
     private final ObjectStore objectStore;
     private final RepositoryLock lock;
 
+    /**
+     * Held so a revision can name a tag. Built here rather than injected: it is
+     * stateless over the same two stores, so a separately-constructed one could
+     * not disagree with this, and threading it through every caller would buy
+     * nothing.
+     */
+    private final TagService tags;
+
     public BranchService(RefStore refStore, ObjectStore objectStore) {
         this(refStore, objectStore, new RepositoryLock());
     }
@@ -40,6 +48,7 @@ public final class BranchService {
         this.refStore = refStore;
         this.objectStore = objectStore;
         this.lock = lock;
+        this.tags = new TagService(refStore, objectStore, lock);
     }
 
     /**
@@ -141,14 +150,34 @@ public final class BranchService {
     /**
      * Resolves a revision to a commit.
      *
-     * <p>Accepts {@code HEAD}, a branch name, a full 40-character commit id, or
-     * an unambiguous abbreviation of one.
+     * <p>Accepts {@code HEAD}, a branch name, a tag name, a full 40-character
+     * commit id, or an unambiguous abbreviation of one.
      *
-     * <p><strong>Order matters, and it is deliberate.</strong> A branch name
-     * takes precedence over any id, because a name that happens to look like a
-     * hash is still a name the user created — and the exact id is tried before
-     * any abbreviation, so a caller who supplies all forty characters is never
-     * put through a directory search to be told what they already knew.
+     * <p><strong>Order matters, and it is deliberate.</strong> It is:
+     *
+     * <pre>
+     *   HEAD → branch → tag → full object id → abbreviated object id
+     * </pre>
+     *
+     * <p>A branch is tried before a tag. Git resolves the other way round, and
+     * this deliberately does not follow it: branches are the namespace callers
+     * here name constantly, every existing call site passes one, and putting tags
+     * first would silently change what those calls mean the day somebody tags a
+     * name a branch already uses. The two namespaces are separate and a name may
+     * exist in both; when it does, the mutable one people are working in wins, and
+     * the tag stays reachable by every other means.
+     *
+     * <p>Both names take precedence over any id, because a name that happens to
+     * look like a hash is still a name the user created — and the exact id is
+     * tried before any abbreviation, so a caller who supplies all forty characters
+     * is never put through a directory search to be told what they already knew.
+     * A tag may not be <em>named</em> as a full object id at all; {@link TagName}
+     * refuses that outright rather than leaving it to precedence.
+     *
+     * <p><strong>A tag resolves to what it ultimately names.</strong> An annotated
+     * tag's ref points at a tag object, but a caller asking to resolve a revision
+     * wants the commit, so the chain is peeled — through as many tag objects as it
+     * takes. Reaching the tag object itself is what {@code TagService} is for.
      *
      * <p>An abbreviation that matches nothing is not found, the same as any
      * other unknown revision. One that matches several is a different situation
@@ -189,6 +218,10 @@ public final class BranchService {
         Optional<ObjectId> branch = tryGetBranch(trimmed);
         if (branch.isPresent()) {
             return branch;
+        }
+        Optional<ObjectId> tag = tryGetTag(trimmed);
+        if (tag.isPresent()) {
+            return tag;
         }
         try {
             ObjectId id = ObjectId.fromHex(trimmed);
@@ -336,6 +369,21 @@ public final class BranchService {
     private Optional<ObjectId> tryGetBranch(String name) {
         try {
             return refStore.getBranch(name);
+        } catch (RefException ex) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * A tag, peeled to whatever it ultimately names.
+     *
+     * <p>Empty rather than throwing for a name no tag could have, so that a
+     * revision string which is not a legal tag name simply moves on to being
+     * tried as an id — the same shape {@link #tryGetBranch} uses.
+     */
+    private Optional<ObjectId> tryGetTag(String name) {
+        try {
+            return tags.peel(name);
         } catch (RefException ex) {
             return Optional.empty();
         }
