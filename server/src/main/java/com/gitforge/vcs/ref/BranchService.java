@@ -2,6 +2,7 @@ package com.gitforge.vcs.ref;
 
 import com.gitforge.vcs.object.AmbiguousObjectIdException;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.repository.RepositoryLock;
 import com.gitforge.vcs.storage.ObjectStore;
 
 import java.util.List;
@@ -23,13 +24,22 @@ public final class BranchService {
 
     private final RefStore refStore;
     private final ObjectStore objectStore;
+    private final RepositoryLock lock;
 
     public BranchService(RefStore refStore, ObjectStore objectStore) {
+        this(refStore, objectStore, new RepositoryLock());
+    }
+
+    public BranchService(RefStore refStore, ObjectStore objectStore, RepositoryLock lock) {
         if (refStore == null || objectStore == null) {
             throw new IllegalArgumentException("Branch service requires a reference store and an object store");
         }
+        if (lock == null) {
+            throw new IllegalArgumentException("Branch service requires a repository lock");
+        }
         this.refStore = refStore;
         this.objectStore = objectStore;
+        this.lock = lock;
     }
 
     /**
@@ -39,8 +49,14 @@ public final class BranchService {
      *     target is not a commit in this repository
      */
     public void createBranch(String name, ObjectId startCommit) {
-        requireExistingCommit(startCommit);
-        refStore.createBranch(name, startCommit);
+        // Shared with other writers, excluded from collection. A branch may be
+        // created at a commit no other reference reaches — resurrecting a deleted
+        // branch by id does exactly that — so this can turn an object a sweep was
+        // about to collect into one it must keep.
+        lock.shared(() -> {
+            requireExistingCommit(startCommit);
+            refStore.createBranch(name, startCommit);
+        });
     }
 
     /**
@@ -72,18 +88,27 @@ public final class BranchService {
      * @throws RefException if the branch is absent or the target is not a commit
      */
     public void updateBranch(String name, ObjectId commit) {
-        requireExistingCommit(commit);
-        refStore.updateBranch(name, commit);
+        // Excluded from collection for the same reason as createBranch: the target
+        // need not have been reachable before.
+        lock.shared(() -> {
+            requireExistingCommit(commit);
+            refStore.updateBranch(name, commit);
+        });
     }
 
     /**
      * Deletes a branch.
      *
-     * <p>Objects are never removed. If no other branch can reach the deleted
-     * branch's commit, that history simply becomes unreferenced: still stored,
-     * still readable by id, but no longer named. Nothing is lost, because there
-     * is no garbage collector to reclaim it — so refusing the deletion, as some
-     * tools do, would protect against nothing here.
+     * <p>Objects are never removed <em>here</em>. If no other branch can reach the
+     * deleted branch's commit, that history becomes unreferenced: still stored,
+     * still readable by id, but no longer named.
+     *
+     * <p>That remains true now that {@link com.gitforge.vcs.gc.GarbageCollector}
+     * exists, and deliberately so. Deleting a branch is a reference operation;
+     * reclaiming storage is a separate one somebody has to ask for. Making
+     * deletion destroy history as a side effect would turn a reversible mistake
+     * into an unrecoverable one, and it is what the retention tests covering this
+     * method exist to prevent.
      *
      * @throws RefException if the branch does not exist or is checked out
      */

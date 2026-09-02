@@ -243,8 +243,12 @@ Stated plainly, because a security document that lists only wins is not useful.
   username/email/password and nothing else.
 - **Rate limiting covers authentication only.** Repository reads are not
   throttled; an anonymous client can poll them freely.
-- **No garbage collection**, so an object that was written before a merge was
-  refused stays on disk. Unreferenced, but present.
+- **Garbage collection is manual and irreversible.** An object written before a
+  merge was refused stays on disk — unreferenced, but present — until the owner
+  runs a sweep. Reporting what is collectible follows ordinary read visibility, so
+  on a public repository an anonymous caller can see how many unreferenced objects
+  exist and how large they are; collecting is owner-only. There is no reflog, so a
+  swept object is gone.
 - **No encryption at rest.** Object storage is a plain directory tree; anyone with
   filesystem access can read every repository, private ones included.
 - **Single instance.** The rate limiter's counters and any in-process state are

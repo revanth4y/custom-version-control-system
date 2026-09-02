@@ -1,5 +1,6 @@
 package com.gitforge.vcs.repository;
 
+import com.gitforge.vcs.gc.GarbageCollector;
 import com.gitforge.vcs.graph.CommitGraph;
 import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.ref.RefStore;
@@ -36,19 +37,37 @@ public final class VcsRepository {
     private final MergeOrchestrator merges;
     private final DiffService diffs;
     private final RepositoryStatistics statistics;
+    private final GarbageCollector gc;
 
+    /**
+     * Wires a repository with a lock of its own, for a caller holding the only
+     * handle to this storage.
+     *
+     * <p>{@link VcsRepositoryFactory} does not use this: two callers opening the
+     * same repository must share one lock, and a lock created here would be
+     * private to one of them.
+     */
     VcsRepository(RepositoryId id, ObjectStore objects, RefStore refs) {
+        this(id, objects, refs, new RepositoryLock());
+    }
+
+    VcsRepository(RepositoryId id, ObjectStore objects, RefStore refs, RepositoryLock lock) {
         this.id = id;
         this.objects = objects;
         this.refs = refs;
-        this.branches = new BranchService(refs, objects);
+        this.branches = new BranchService(refs, objects, lock);
 
         CommitGraph graph = new CommitGraph(objects);
         this.reader = new RepositoryReader(objects, branches, graph);
-        this.commits = new CommitService(objects, refs, branches);
-        this.merges = new MergeOrchestrator(objects, refs, branches, graph);
+        this.commits = new CommitService(objects, refs, branches, lock);
+        this.merges = new MergeOrchestrator(objects, refs, branches, graph, lock);
         this.diffs = new DiffService(objects);
         this.statistics = new RepositoryStatistics(objects, branches, graph);
+
+        // Null working tree: a server-side repository is bare, as described above,
+        // so there is no materialized tree to protect. The collector treats that
+        // as one fewer root rather than as an empty one.
+        this.gc = new GarbageCollector(objects, refs, null, lock);
     }
 
     public RepositoryId id() {
@@ -91,6 +110,11 @@ public final class VcsRepository {
     /** Aggregate facts derived from the object store. */
     public RepositoryStatistics statistics() {
         return statistics;
+    }
+
+    /** Reclaiming objects no reference reaches. Explicit; never runs on its own. */
+    public GarbageCollector gc() {
+        return gc;
     }
 
     @Override

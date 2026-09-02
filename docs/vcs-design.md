@@ -315,9 +315,17 @@ from one repository's services to another's storage. Two repositories holding th
 same file compute the same object id — content addressing is global by nature —
 but each keeps its own copy, and neither can read the other's.
 
-> **No garbage collection.** Objects left unreachable — by a deleted branch, or
-> by a merge that was computed and discarded — stay on disk. Nothing reads them
-> and nothing reclaims them.
+> **Garbage collection is explicit.** Objects left unreachable — by a deleted
+> branch, or by a merge that was computed and discarded — stay on disk until a
+> sweep is asked for. `GarbageCollector` walks from every branch, from HEAD
+> including the detached case, and from the tree the working tree records, and
+> removes what that closure does not reach.
+>
+> Two things make it safe rather than merely correct. It holds a per-repository
+> exclusive lock across both the reachability calculation and the deletion, so a
+> commit part-way through — objects written, branch not yet moved — cannot be
+> mistaken for garbage. And if any object in the closure cannot be read, it
+> abandons the sweep entirely rather than delete on a partial picture.
 
 ## What is not here
 
@@ -326,7 +334,8 @@ Honest list, so nothing above reads as more than it is:
 - No pack files, no delta compression — one file per object
 - No rename detection
 - No tags, no remotes, no reflog, no packed-refs
-- No garbage collection
+- No automatic garbage collection: collection happens only when asked for, and never on a schedule
+- No reflog, so a swept branch tip is not recoverable
 - No resolution of a conflict once reported: conflicting regions are named, not editable
 - No submodules, no symlink entries, no `.gitignore` semantics
 - Criss-cross merges pick one base rather than merging bases recursively

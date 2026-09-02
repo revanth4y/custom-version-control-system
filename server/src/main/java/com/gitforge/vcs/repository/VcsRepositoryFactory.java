@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Creates and opens repositories beneath a single storage root.
@@ -34,6 +36,7 @@ import java.util.Comparator;
 public final class VcsRepositoryFactory {
 
     private final Path storageRoot;
+    private final Map<String, RepositoryLock> locks = new ConcurrentHashMap<>();
 
     public VcsRepositoryFactory(Path storageRoot) {
         if (storageRoot == null) {
@@ -145,6 +148,23 @@ public final class VcsRepositoryFactory {
         Path root = pathFor(id);
         ObjectStore objects = new FileSystemObjectStore(root);
         RefStore refs = new FileSystemRefStore(root);
-        return new VcsRepository(id, objects, refs);
+        return new VcsRepository(id, objects, refs, lockFor(id));
+    }
+
+    /**
+     * The lock shared by every open handle to one repository.
+     *
+     * <p>Opening does not cache — each call builds fresh services over the same
+     * directory — so two concurrent requests hold two {@link VcsRepository}
+     * instances backed by the same bytes. A lock held inside either of them would
+     * exclude nobody. Keying it here, by id, is what makes exclusion mean
+     * something.
+     *
+     * <p>Entries are never evicted. One lock per repository the process has
+     * touched is a few dozen bytes against storage measured in objects, and
+     * evicting one while a sweep held it is a bug that would be very hard to see.
+     */
+    private RepositoryLock lockFor(RepositoryId id) {
+        return locks.computeIfAbsent(id.value(), key -> new RepositoryLock());
     }
 }
