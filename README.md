@@ -152,6 +152,26 @@ Merging into a branch that is already an ancestor reports `ALREADY_UP_TO_DATE`.
 Merging when your branch has not moved is a `FAST_FORWARDED` — the branch pointer
 advances, no merge commit is made.
 
+### Remotes
+
+A repository can fetch from and push to a repository on **another GitForge
+server**. The fetch walk is driven from the receiving side — ask for tips, ask
+for what those reference and are not already held, repeat — so the peer only ever
+answers "here are the objects with these ids" and cannot steer it. Every object
+is re-hashed on arrival: an id is the SHA-1 of the canonical uncompressed form,
+so nothing is trusted for having come from a peer.
+
+Fetched tips land on remote-tracking refs at `refs/remotes/<remote>/<branch>`,
+which are deliberately not branches — `listBranches()` never sees them — and are
+garbage-collection roots, so a sweep after a fetch does not undo it.
+
+Push is **fast-forward only** and moves one branch. The receiving side verifies
+every object, proves the whole history beneath the proposed tip is present, and
+only then moves the reference. There is no reflog, so a push that would drop
+commits is refused rather than resolved.
+
+Remote configuration is a `REMOTES` file beside `HEAD`. No database table.
+
 ## The interface
 
 The web application is where the engine becomes legible, so it shows real values
@@ -386,8 +406,16 @@ own: not deleting a branch, not committing, not merging, not startup. There is n
 schedule and no background sweep, so a repository nobody sweeps keeps everything
 it has ever written.
 
+**Remotes are GitForge-to-GitForge only.** There is no Git wire-protocol
+compatibility, no SSH, and no pack files — objects cross one at a time,
+base64-encoded. No force push, no ref deletion by push, no shallow or partial
+clone. Pushing needs a token the peer accepts, supplied per request; peer
+credentials are never stored.
+
 **Single-node storage.** The object store is a local filesystem directory. There
-is no replication and no sharding.
+is no replication and no sharding. A repository can fetch from and push to a
+repository on another GitForge server, but that is synchronisation on request —
+nothing keeps two copies in step on its own.
 
 ## Documentation
 

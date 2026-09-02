@@ -620,6 +620,114 @@ identity.
 
 ---
 
+## Remotes
+
+Synchronising with a repository on another GitForge server. Reads are GETs and
+follow ordinary read visibility; everything that writes is owner-only.
+
+### `GET /repositories/{owner}/{name}/remote-refs` · anonymous
+
+Every branch and its tip, for a peer deciding what to fetch.
+
+```json
+{ "refs": [ { "branch": "main", "commit": "4dc91d5e…" } ] }
+```
+
+Branches only. HEAD says which branch a repository has checked out, and its own
+remote-tracking refs are its record of a third party — neither is a peer's
+business, and passing the second on would let one peer's view propagate as
+though it were ours.
+
+### `GET /repositories/{owner}/{name}/remote-objects?id=…&id=…` · anonymous
+
+The named objects. At most **32 ids** per request.
+
+```json
+{ "objects": [ { "id": "4dc91d5e…", "type": "commit", "payload": "<base64>" } ] }
+```
+
+`payload` is the **canonical, uncompressed** form. An id is the SHA-1 of exactly
+those bytes, so a receiver recomputes it rather than trusting the sender. An id
+naming nothing is simply absent from the answer: the caller must compare what it
+asked for against what came back anyway.
+
+### `GET /repositories/{owner}/{name}/remote-objects/missing?id=…` · anonymous
+
+Which of the offered ids this repository does not hold, so a push carries what is
+needed rather than everything reachable.
+
+```json
+{ "missing": ["9b2c4d1a…"] }
+```
+
+### `POST /repositories/{owner}/{name}/remote-objects/receive` · owner only
+
+Objects, and optionally a branch to move onto one of them.
+
+```json
+{ "objects": [ … ], "branch": "main", "commit": "4dc91d5e…" }
+```
+
+`branch` and `commit` are optional together. A push that does not fit in one
+request sends earlier batches with neither and asks for the move only on the
+last, so the move is decided once against a store that already holds everything.
+
+Every object is verified before it is stored. The branch moves only after the
+whole history beneath the proposed tip is proven present **and** the move is a
+fast-forward.
+
+| Case | Answer |
+| --- | --- |
+| Accepted | **200** with what was stored |
+| An object that does not hash to its id | **422** |
+| History beneath the tip incomplete | **422**, and no ref moves |
+| Not a fast-forward | **409**, and no ref moves |
+| Anonymous, or not the owner | **401** / **403** |
+
+### `GET` / `POST` / `DELETE /repositories/{owner}/{name}/remotes`
+
+List, register and forget. Registering takes `{"name": …, "url": …}` and answers
+**201**; forgetting takes `?name=` and answers **204**.
+
+A URL must be `http` or `https`, must not carry credentials, and must not resolve
+to a loopback, link-local, site-local or any-local address unless the deployment
+sets `vcs.remote.allow-private-addresses`. A refused URL is **422**.
+
+Forgetting a remote leaves its tracking refs and their objects exactly where they
+are. Removing a name is not a request to reclaim storage — that is what
+`POST /gc` is for.
+
+### `POST /repositories/{owner}/{name}/remotes/{remote}/fetch` · owner only
+
+Brings the remote's history in and updates remote-tracking refs.
+
+```json
+{ "updatedRefs": ["origin/main"], "receivedObjects": 12, "skippedBranches": [] }
+```
+
+Nothing local moves: a fetch is not a merge, and no branch is created. A branch
+name the remote offers that this repository will not track is reported in
+`skippedBranches` rather than failing the fetch. Re-fetching an unchanged remote
+receives zero objects.
+
+**Fetched objects are garbage-collection roots.** An object reachable only
+through `origin/main` survives a sweep; forget the remote's tracking refs and it
+becomes collectible.
+
+### `POST /repositories/{owner}/{name}/remotes/{remote}/push` · owner only
+
+Sends one branch to the remote, fast-forward only.
+
+```json
+{ "branch": "main", "token": "<a token the peer accepts>" }
+```
+
+The token authenticates this server to the peer for that call only and is never
+stored. **One branch per push**, and no force push: there is no reflog here, so a
+push that would drop commits is refused (**409**) rather than resolved.
+
+---
+
 ## Garbage collection
 
 Objects become unreachable when the last reference to them goes — a deleted

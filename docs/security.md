@@ -231,6 +231,55 @@ The demo accounts share a password that is published in the repository. That is
 intentional: they exist to be signed into while showing the application, and the
 profile that creates them cannot run against a real deployment.
 
+## Remote transfer
+
+Registering a remote is the first thing in GitForge that makes **the server**
+issue an outbound request on a caller's behalf. Until V2.0.13 nothing in
+`server/src/main/java` made an outbound call at all, so this is a new class of
+exposure rather than an extension of an existing one.
+
+**What a remote may point at.** `RemoteUrl` refuses anything but `http` and
+`https`, refuses a URL carrying credentials, caps the length, and — unless a
+deployment explicitly sets `vcs.remote.allow-private-addresses` — refuses a host
+where **any** resolved address is loopback, link-local, site-local, any-local or
+multicast. Every address, not the first: a name with one public and one loopback
+address would otherwise pass on whichever the resolver happened to return. A host
+that cannot be resolved is refused rather than allowed.
+
+The URL is re-validated on every outbound call, not only when the remote was
+registered. Configuration outlives the check that admitted it.
+
+> **This does not close DNS rebinding.** The name is resolved by the guard and
+> again by the HTTP client, and nothing makes the two answers agree. Closing that
+> needs the connection pinned to a vetted address, which belongs with deeper
+> transport hardening. What is here makes the exposure bounded and visible; it is
+> not a claim that outbound requests are safe against a determined attacker.
+
+**What arrives is not trusted.** Every received object is re-hashed by the engine
+before it is stored, so a peer cannot introduce content under an id that does not
+describe it. Before any branch moves, the whole history beneath the proposed tip
+is walked against the local store; if anything is missing the push is refused and
+no reference moves. Ref names from a peer are validated by the same rules a local
+name is, and the resolved path is checked against the remotes directory
+independently of those rules.
+
+**What a peer can spend.** At most 32 ids per read request, 500 objects and 8 MiB
+per receive, and 10,000 objects per transfer — all below
+`RequestSizeLimitFilter`'s 16 MiB ceiling, which still applies underneath.
+Outbound calls carry a 10-second connect and 30-second read timeout, because a
+peer that accepts a connection and then says nothing is a denial of service it
+can perform by doing nothing.
+
+**Authorization is the existing model, unchanged.** Advertisement and object
+reads follow the ordinary read rule — anonymous on a public repository, invisible
+on a private one. Registering, fetching, pushing and receiving are owner-only.
+`SecurityConfig` needed no new rule, because reads are GETs and writes are POSTs.
+
+**Credentials are not stored.** Pushing to a peer needs a token that peer will
+accept; it is supplied per request and used for that call only. Storing peer
+credentials is a separate problem with its own requirements, and a token in a
+repository file is a token nobody remembers is there.
+
 ## What is not defended
 
 Stated plainly, because a security document that lists only wins is not useful.
@@ -249,6 +298,11 @@ Stated plainly, because a security document that lists only wins is not useful.
   on a public repository an anonymous caller can see how many unreferenced objects
   exist and how large they are; collecting is owner-only. There is no reflog, so a
   swept object is gone.
+- **Remote transfer is not rate limited**, and reads on a public repository are
+  anonymous, so a peer can ask for objects as often as it likes. The same is
+  already true of every other repository read.
+- **DNS rebinding is not closed** for outbound remote requests; see *Remote
+  transfer* above.
 - **No encryption at rest.** Object storage is a plain directory tree; anyone with
   filesystem access can read every repository, private ones included.
 - **Single instance.** The rate limiter's counters and any in-process state are
