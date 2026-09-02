@@ -110,6 +110,9 @@ Sized so that one request cannot make the server do unbounded work.
 | Contribution range | 366 days | **400** |
 | Line diff | 20,000 lines / 5,000 edits | reported without hunks |
 | Files with hunks per diff | 100 | reported without hunks |
+| Tag name | 255 characters | **400** |
+| Release title | 255 characters | **400** |
+| Release body | 100,000 characters | **400** |
 
 413 is the transport refusal, before the body is parsed; 400 is the application
 refusing something it has read and understood.
@@ -280,6 +283,42 @@ accept; it is supplied per request and used for that call only. Storing peer
 credentials is a separate problem with its own requirements, and a token in a
 repository file is a token nobody remembers is there.
 
+## Tags and releases
+
+A tag name becomes a path under `refs/tags`, so an unvalidated one is a
+filesystem write primitive — `../../objects/ab/cdef` would let a caller overwrite
+an immutable object through the mutable ref API. `TagName` rejects control
+characters, a forbidden character set, `@{`, `.` and `..` segments, segments
+starting `.` or `-`, segments ending `.lock`, absolute paths, and empty segments.
+
+**Containment is then checked again, independently.** `FileSystemRefStore`
+resolves the path, normalizes it, and confirms it still starts inside the tags
+root — exactly as it does for branches and remote-tracking refs. A naming rule
+that turns out to be incomplete still cannot become a write outside the refs
+directory.
+
+Two further rules exist because tags take part in revision resolution: a name
+that is exactly a full object id is refused outright rather than resolved by
+precedence, and names are length-capped.
+
+**Mutations are owner-only.** Creating and deleting a tag, and creating, editing
+and deleting a release, all go through the same `forWrite` check every other
+write uses. Reads follow ordinary repository visibility, so a private
+repository's tags are invisible — reported as absent rather than forbidden, since
+distinguishing the two would itself disclose the repository.
+
+**A draft release is the owner's alone**, and a stranger asking for one directly
+is told it does not exist rather than that it is forbidden.
+
+A release stores the **name** of a tag and never an object id. Beyond keeping the
+collector's root set complete, it means no request can steer the database into
+holding a reference to arbitrary stored bytes.
+
+**Tags are never transferred.** A fetch or push that encounters a tag object
+refuses rather than walking it, on both the sending and the receiving side, so
+V2.0.13's wire behaviour is unchanged and a peer cannot introduce a tag object
+into this repository.
+
 ## What is not defended
 
 Stated plainly, because a security document that lists only wins is not useful.
@@ -292,6 +331,12 @@ Stated plainly, because a security document that lists only wins is not useful.
   username/email/password and nothing else.
 - **Rate limiting covers authentication only.** Repository reads are not
   throttled; an anonymous client can poll them freely.
+- **No tag signing, and no signature verification.** An annotated tag records who
+  wrote it as plain text taken from the authenticated caller. It is evidence of
+  who was signed in, not cryptographic proof of authorship.
+- **A tag is immutable, but not undeletable.** The owner may delete one, and
+  since there is no reflog the object it named may then be swept. Immutability
+  prevents a silent re-point, not a deliberate removal.
 - **Garbage collection is manual and irreversible.** An object written before a
   merge was refused stays on disk — unreferenced, but present — until the owner
   runs a sweep. Reporting what is collectible follows ordinary read visibility, so
