@@ -4,6 +4,7 @@ import com.gitforge.vcs.gc.GarbageCollector;
 import com.gitforge.vcs.graph.CommitGraph;
 import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.ref.RefStore;
+import com.gitforge.vcs.remote.ReceiveService;
 import com.gitforge.vcs.storage.ObjectStore;
 
 /**
@@ -38,6 +39,8 @@ public final class VcsRepository {
     private final DiffService diffs;
     private final RepositoryStatistics statistics;
     private final GarbageCollector gc;
+    private final ReceiveService receives;
+    private final RepositoryLock lock;
 
     /**
      * Wires a repository with a lock of its own, for a caller holding the only
@@ -68,6 +71,8 @@ public final class VcsRepository {
         // so there is no materialized tree to protect. The collector treats that
         // as one fewer root rather than as an empty one.
         this.gc = new GarbageCollector(objects, refs, null, lock);
+        this.receives = new ReceiveService(objects, refs, graph, lock);
+        this.lock = lock;
     }
 
     public RepositoryId id() {
@@ -115,6 +120,22 @@ public final class VcsRepository {
     /** Reclaiming objects no reference reaches. Explicit; never runs on its own. */
     public GarbageCollector gc() {
         return gc;
+    }
+
+    /** Accepting objects and a branch move from another repository. */
+    public ReceiveService receives() {
+        return receives;
+    }
+
+    /**
+     * The lock this repository's writers share and its collector excludes.
+     *
+     * <p>Exposed so a fetch or push assembled outside this class runs under the
+     * same exclusion every other write does. Handing it out is safer than the
+     * alternative, which is a remote operation quietly taking no lock at all.
+     */
+    public RepositoryLock lock() {
+        return lock;
     }
 
     @Override
