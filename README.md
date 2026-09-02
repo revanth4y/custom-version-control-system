@@ -172,6 +172,38 @@ commits is refused rather than resolved.
 
 Remote configuration is a `REMOTES` file beside `HEAD`. No database table.
 
+**Tags are not transferred.** A fetch or push that encounters a tag object
+refuses rather than walking it, on both sides.
+
+### Tags and releases
+
+A tag is a permanent name for a point in history, at `refs/tags/<name>` — beside
+`refs/heads`, not inside it, so a tag never appears among branches. **Lightweight**
+tags hold an object id and nothing else. **Annotated** tags store a message, a
+tagger and a time in a fourth kind of object, hashed and verified exactly like a
+blob, tree or commit, so editing the message does not amend the tag — it produces
+a different one.
+
+**Tags do not move.** There is no operation that would move one, at any layer:
+re-pointing means deleting and creating again, which is two deliberate acts
+rather than one careless one. There is no reflog, so a moved tag's old target
+could become collectible, and a reference that silently stops describing what it
+described is worse than one that refuses to change.
+
+Tags are garbage-collection roots, and the closure follows an annotated tag on to
+its target — through a chain of tags of any depth. A revision may name a tag, and
+resolves through it to the commit; the precedence is `HEAD → branch → tag → id`,
+with branches ahead of tags, which is the opposite of Git and deliberately so.
+
+A **release** is a published note attached to a tag, with draft and pre-release
+states. It stores the tag's *name*, never an object id, so the database still
+holds no reference the collector cannot see. A release cannot be moved to another
+tag, deleting a release never deletes its tag, and deleting a tag a release names
+is refused.
+
+They deliberately do not do: tag signing or signature verification, tag transfer
+between servers, release assets of any kind, or moving a tag by force.
+
 ## The interface
 
 The web application is where the engine becomes legible, so it shows real values

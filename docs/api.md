@@ -620,6 +620,159 @@ identity.
 
 ---
 
+## Tags
+
+Tag names may contain slashes, so they travel as a query parameter rather than a
+path segment — the same reason branch names do.
+
+### `GET /repositories/{owner}/{name}/tags` · anonymous
+
+Every tag, sorted by name.
+
+```json
+[
+  {
+    "name": "v1.0.0",
+    "target": "6f1c…",
+    "commit": "a94a…",
+    "annotated": true,
+    "message": "Release 1.0\n",
+    "taggerName": "octocat",
+    "taggerEmail": "octocat@example.test",
+    "taggedAt": "2026-09-02T10:00:00Z",
+    "tip": { "sha": "a94a…", "shortSha": "a94a8fe", "message": "Initial commit\n", "authorName": "octocat", "timestamp": "2026-09-01T09:00:00Z" }
+  }
+]
+```
+
+`target` is what the ref literally holds — the tag object's id for an annotated
+tag. `commit` is the end of the chain after peeling. For a lightweight tag the
+two are the same, and `annotated` is false with `message`, `taggerName`,
+`taggerEmail` and `taggedAt` all null.
+
+`tip` is null when the tag names something that is not a commit, or one that
+cannot be read. A tag whose chain cannot be followed is still listed: a listing
+that failed entirely because one entry was damaged would be least useful exactly
+when it most needs reading.
+
+### `GET /repositories/{owner}/{name}/tag?name=v1.0.0` · anonymous
+
+One tag, in the shape above. **404** if there is no such tag.
+
+### `POST /repositories/{owner}/{name}/tags`
+
+Owner only.
+
+```json
+{ "name": "v1.0.0", "target": "main", "message": "Release 1.0" }
+```
+
+`target` is anything revision resolution accepts: a branch, another tag, `HEAD`,
+a commit id, or an abbreviation of one.
+
+**`message` present and non-blank produces an annotated tag; absent or blank
+produces a lightweight one.** There is no separate flag, because an annotated tag
+with nothing to say and a lightweight tag are the same thing.
+
+**201** with the created tag.
+
+| Failure | Status |
+| --- | --- |
+| A tag of that name exists — including any attempt to move one | **409** |
+| The target does not resolve | **404** |
+| The name is malformed, traversing, or shaped like an object id | **400** |
+| Not the owner | **403** |
+| Not signed in | **401** |
+
+### `DELETE /repositories/{owner}/{name}/tags?name=v1.0.0`
+
+Owner only. **204** on success.
+
+Removes the reference and nothing else. The tag object and the history beneath it
+stay stored, and become collectible only if nothing else reaches them — exactly
+as deleting a branch behaves.
+
+| Failure | Status |
+| --- | --- |
+| No such tag | **404** |
+| A release references the tag | **409** |
+| Not the owner | **403** |
+
+## Releases
+
+A release is addressed by its own id, so that goes in the path.
+
+### `GET /repositories/{owner}/{name}/releases` · anonymous
+
+Newest first. **Drafts appear only for the owner** — a draft is omitted from an
+anonymous or third-party listing entirely.
+
+```json
+[
+  {
+    "id": "9c1f…",
+    "tag": "v1.0.0",
+    "name": "Version 1.0",
+    "body": "First release.",
+    "draft": false,
+    "prerelease": false,
+    "authorName": "octocat",
+    "createdAt": "2026-09-02T10:00:00Z",
+    "updatedAt": "2026-09-02T10:00:00Z",
+    "publishedAt": "2026-09-02T10:00:00Z"
+  }
+]
+```
+
+`tag` is the name the release stores, deliberately not resolved here. `authorName`
+is null once the author's account has been deleted. `publishedAt` is null exactly
+while the release is a draft.
+
+### `GET /repositories/{owner}/{name}/releases/{id}` · anonymous
+
+One release. A draft is **404** to anyone but the owner, not 403: telling a
+stranger a draft exists is itself a disclosure. A malformed id is **400**.
+
+### `POST /repositories/{owner}/{name}/releases`
+
+Owner only.
+
+```json
+{ "tag": "v1.0.0", "name": "Version 1.0", "body": "Notes.", "draft": false, "prerelease": false }
+```
+
+**201** with the created release.
+
+| Failure | Status |
+| --- | --- |
+| The tag does not exist — a branch name is not enough | **404** |
+| A release already exists for that tag | **409** |
+| Blank title, blank tag, or a body over 100,000 characters | **400** |
+| Not the owner | **403** |
+
+### `PATCH /repositories/{owner}/{name}/releases/{id}`
+
+Owner only. Every field optional; omitted means unchanged.
+
+```json
+{ "name": "Version 1.0 (corrected)", "body": "Better notes.", "draft": false, "prerelease": false }
+```
+
+**There is no `tag` field.** A release cannot be re-pointed: a published note that
+quietly came to describe different code would be the failure immutable tags exist
+to prevent.
+
+Publishing a draft stamps `publishedAt`; editing afterwards does not move it.
+Returning to draft clears it, since a draft claiming a publication date is a draft
+nobody can trust.
+
+### `DELETE /repositories/{owner}/{name}/releases/{id}`
+
+Owner only. **204** on success.
+
+Removes the release row and nothing else. **The tag it named stays**, and so does
+everything the tag protects.
+
 ## Remotes
 
 Synchronising with a repository on another GitForge server. Reads are GETs and

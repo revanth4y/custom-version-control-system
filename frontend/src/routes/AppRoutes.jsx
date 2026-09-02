@@ -19,6 +19,8 @@ import { useAuth } from "../hooks/useAuth";
  */
 const BlobView = lazy(() => import("../pages/BlobView"));
 const BranchList = lazy(() => import("../pages/BranchList"));
+const Releases = lazy(() => import("../pages/Releases"));
+const ReleaseDetail = lazy(() => import("../pages/ReleaseDetail"));
 const CommitDetail = lazy(() => import("../pages/CommitDetail"));
 const CommitHistory = lazy(() => import("../pages/CommitHistory"));
 const Compare = lazy(() => import("../pages/Compare"));
@@ -109,6 +111,8 @@ const AppRoutes = () =>
             { path: "tree/:ref", element: <RepositoryCode /> },
             { path: "blob/:ref/*", element: <BlobView /> },
             { path: "branches", element: <BranchList /> },
+            { path: "releases", element: <Releases /> },
+            { path: "releases/:releaseId", element: <ReleaseDetail /> },
             { path: "commits", element: <CommitHistory /> },
             { path: "commits/:ref", element: <CommitHistory /> },
             { path: "commit/:sha", element: <CommitDetail /> },

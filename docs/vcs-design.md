@@ -154,13 +154,17 @@ Slashes are allowed, so `feature/login` and `bugfix/auth/token` work and nest as
 directories under `refs/heads/`. The rules reject what would make a ref
 ambiguous or a path unsafe.
 
-> **Divergence from Git.** No reflog, no packed-refs, no tags. Every object is
-> stored individually — there are no pack files, so a large repository costs one
-> file per object.
+> **Divergence from Git.** No reflog, no packed-refs. Every object is stored
+> individually — there are no pack files, so a large repository costs one file
+> per object.
 >
 > Remote-tracking refs do exist, at `refs/remotes/<remote>/<branch>`, but they
 > are not branches: `listBranches()` walks `refs/heads` and nothing else, so a
 > fetched tip never appears as local work. They are garbage-collection roots.
+>
+> Tags exist too, at `refs/tags/<name>`, and are likewise not branches. Where
+> this does diverge is precedence: a revision that names both a branch and a tag
+> resolves to the branch, which is the opposite of Git's order. See *Tags*.
 
 ## Diffing
 
@@ -337,7 +341,9 @@ Honest list, so nothing above reads as more than it is:
 
 - No pack files, no delta compression — one file per object
 - No rename detection
-- No tags, no reflog, no packed-refs
+- No reflog, no packed-refs
+- No tag signing, and no signature verification of any kind
+- No tag transfer: a fetch or push moves branches, and refuses a tag object outright
 - No pack-based transfer: objects cross the wire one at a time, base64-encoded
 - No force push, no push-based ref deletion, no shallow or partial clone
 - No Git wire-protocol compatibility and no SSH transport: remotes are other GitForge servers, over HTTP
@@ -437,6 +443,112 @@ sufficient and removes the partially-applied push as an outcome.
 Reads are GETs because reads here are anonymous on a public repository, exactly
 as every other read is. Ids travel in the query string, bounded at 32 per request
 so a URL stays short.
+
+## Tags
+
+A tag is a permanent name for a point in history. Branches move; tags do not,
+and that difference is enforced by there being no operation that would move one.
+
+### Two kinds
+
+A **lightweight** tag is a file under `refs/tags/` holding an object id, and
+nothing more. A **annotated** tag stores a message, a tagger and a time, and
+those have to live somewhere that cannot be edited afterwards — a release
+reference whose note could be rewritten in place says nothing reliable about
+what was released. So they live in an object:
+
+```
+object <40 hex>
+type <blob|tree|commit|tag>
+tag <name>
+tagger <name> <email> <epoch> <offset>
+
+<message>
+```
+
+Deliberately the same shape as a commit's payload, so one parser idiom serves
+both. The id is the SHA-1 of exactly those bytes, framed the same way every
+other object is, so editing the message does not amend the tag — it produces a
+different one. There is no separate hashing path for tags.
+
+The target's **type is recorded rather than inferred**, which is what lets a
+reader know what it is about to dereference before reading it, and what makes a
+tag pointing at another tag representable.
+
+### The namespace
+
+`refs/tags/<name>`, beside `refs/heads` and not inside it. `listBranches()`
+walks `headsRoot` and nothing else, so a tag never appears among branches, and a
+tag and a branch may share a name without disturbing each other.
+
+`TagName` is deliberately not `BranchName`. Tags share the path-safety rules —
+the name becomes a path, so an unvalidated one is a filesystem write primitive —
+and permit the same slash hierarchy, but two rules have no branch equivalent,
+both because tags take part in revision resolution: a name that is exactly a
+full object id is **refused** rather than resolved by precedence, and there is a
+length ceiling, because a tag name is chosen once and kept.
+
+### Immutability
+
+`RefStore` has `updateBranch` and `setRemoteRef`, and no tag equivalent at all.
+Creating a tag that exists fails rather than silently replacing it, so moving one
+means deleting it and creating it again — two deliberate acts rather than one
+careless one.
+
+The reason is the same one that makes push fast-forward-only: there is no reflog,
+so the object a moved tag used to name may become collectible, and a reference
+that silently stops describing what it described is worse than one that refuses
+to change.
+
+### Peeling
+
+A tag resolves to what it ultimately names, following tag objects until something
+else appears — through a chain of any depth. A cycle is impossible for the same
+reason it is impossible among commits: a tag names its target inside the bytes
+that determine its own id, so being its own ancestor would require its hash to
+appear in the input to that hash. `MAX_PEEL_DEPTH` is therefore a bound on
+absurdity rather than a cycle guard.
+
+### Resolution precedence
+
+```
+HEAD → branch → tag → full object id → abbreviated object id
+```
+
+**A branch is tried before a tag, which is the opposite of Git.** That is
+deliberate: branches are the namespace callers name constantly, every existing
+call site passes one, and putting tags first would silently change what those
+calls mean the day somebody tags a name a branch already uses. Deleting the
+branch lets the tag resolve.
+
+A symbolic `HEAD` may still only name `refs/heads/`. A tag can never become the
+checked-out reference.
+
+### Garbage collection
+
+`refs/tags/*` are roots, and the closure follows a tag on to its target — one hop
+per object, so a chain is followed by the walk that is already running rather
+than by a special case. Two things can go wrong independently and each has its
+own regression:
+
+| Missing | Consequence |
+| --- | --- |
+| the root | the tag object itself is collected |
+| the traversal | worse — the tag survives and the history it names is destroyed |
+
+Both were measured. Removing the root fails every lightweight test; removing only
+the traversal fails the annotated ones while the lightweight ones still pass.
+
+### Releases
+
+A release is application metadata about a tag, stored in PostgreSQL, and it
+records the tag's **name** — never an object id. Object ids live in the
+filesystem store and nowhere else; a column holding one would be a reference the
+collector cannot see, and its completeness argument would quietly stop being
+true.
+
+A release cannot be re-pointed to another tag, deleting a release never deletes
+its tag, and deleting a tag a release names is refused rather than cascaded.
 
 ## Tests
 

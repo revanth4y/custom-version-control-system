@@ -4,6 +4,7 @@ import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
@@ -44,16 +45,20 @@ import java.util.Set;
  *       branch names, and is exactly the case a branches-only traversal loses;
  *   <li>every remote-tracking ref, because a fetched tip is spoken for even
  *       though no local branch reaches it;
+ *   <li>every tag, which is the whole point of a tag: it is a permanent reference
+ *       to a point in history, and it is the only root that may name something
+ *       other than a commit — an annotated tag names a tag object, and the target
+ *       beneath it is reached by traversal rather than by being a root itself;
  *   <li>the tree recorded in {@link WorkTreeState}, when a working tree has been
  *       materialized. That is a tree rather than a commit, and it is deliberately
  *       not derived from HEAD, so nothing else in the root set implies it.
  * </ul>
  *
- * <p>There are no other persistent references. The engine has no tags — its
- * {@link com.gitforge.vcs.object.ObjectType} admits only blobs, trees and commits
- * — and no reflog, and the database stores no object ids at all, so
- * {@code refs/heads}, {@code refs/remotes}, {@code HEAD} and {@code WORKTREE} are
- * the complete set of places an object can be spoken for.
+ * <p>There are no other persistent references. The engine has no reflog, and the
+ * database stores no object ids at all — a release records the <em>name</em> of a
+ * tag, never an object id — so {@code refs/heads}, {@code refs/remotes},
+ * {@code refs/tags}, {@code HEAD} and {@code WORKTREE} are the complete set of
+ * places an object can be spoken for.
  *
  * <p><strong>Nothing is deleted unless the closure is complete.</strong> If any
  * object in it cannot be read — missing, or damaged past parsing — then what the
@@ -249,6 +254,15 @@ public final class GarbageCollector {
         // ordinary sweep delete everything a fetch had just brought in.
         refs.listRemoteRefs().forEach(ref -> roots.add(ref.commit()));
 
+        // Tags. A tag exists precisely so that a point in history stays
+        // reachable after the branch that produced it has moved on or been
+        // deleted, so a sweep that did not read them would destroy the one thing
+        // a tag is for. Unlike every other root this may name a tag object rather
+        // than a commit; the closure follows it on to its target.
+        for (String tag : refs.listTags()) {
+            refs.getTag(tag).ifPresent(roots::add);
+        }
+
         if (workTree != null) {
             workTree.materializedTree().ifPresent(roots::add);
         }
@@ -289,8 +303,14 @@ public final class GarbageCollector {
                 }
                 case Tree tree -> tree.entries().stream().map(TreeEntry::id).forEach(pending::push);
 
+                // One hop, not a loop. A tag pointing at a tag is handled by the
+                // target going back on the same stack and being read as a tag in
+                // its own right, so a chain of any depth is followed by the walk
+                // that is already running rather than by a special case here.
+                case Tag tag -> pending.push(tag.target());
+
                 // Exhaustive over the sealed VcsObject rather than defaulted: a
-                // fourth object type must not be able to appear here and be
+                // further object type must not be able to appear here and be
                 // traversed as if it referenced nothing.
                 case Blob ignored -> {
                 }

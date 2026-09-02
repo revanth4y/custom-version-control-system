@@ -5,6 +5,7 @@ import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
@@ -174,6 +175,16 @@ public final class ReceiveService {
                     parent.parents().forEach(pending::push);
                 }
                 case Tree tree -> tree.entries().stream().map(TreeEntry::id).forEach(pending::push);
+
+                // Tags are not transferred, so one cannot legitimately be reached
+                // from a pushed branch tip: branch history is commits, trees and
+                // blobs, and nothing in it names a tag. Reaching one means the
+                // sender put it there, and the safe answer to an object that
+                // should be impossible is to refuse rather than to walk it.
+                case Tag tag -> throw new RemoteException(
+                        "Object " + tag.id() + " is a tag; tags are not transferred between "
+                                + "repositories, so the branch was not moved");
+
                 case Blob ignored -> {
                 }
             }

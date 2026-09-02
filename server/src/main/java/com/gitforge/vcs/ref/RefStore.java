@@ -105,4 +105,50 @@ public interface RefStore {
      * @return how many refs were removed
      */
     int deleteRemoteRefs(String remote);
+
+    /**
+     * Every tag in this repository, sorted by name.
+     *
+     * <p>Deliberately not folded into {@link #listBranches()}, for the same
+     * reason tracking refs are not: a tag is a permanent reference to a point in
+     * history, a branch is a moving pointer, and a caller listing branches is
+     * asking about lines of development rather than about every name that exists.
+     */
+    List<String> listTags();
+
+    /**
+     * What a tag points at, or empty if no such tag exists.
+     *
+     * <p>The target may be a commit — a lightweight tag — or a tag object, which
+     * is what an annotated tag stores. This layer does not distinguish them; it
+     * stores and retrieves object ids, and peeling belongs above it.
+     */
+    Optional<ObjectId> getTag(String name);
+
+    /** Whether a tag of this name exists. */
+    boolean tagExists(String name);
+
+    /**
+     * Creates a tag.
+     *
+     * <p><strong>There is deliberately no method to move one.</strong> Tags are
+     * immutable, and the cleanest way to enforce that is to offer no operation
+     * that could break it: a caller cannot re-point a tag by mistake because
+     * nothing here re-points a tag at all. Creating one that already exists is a
+     * failure rather than a silent replacement.
+     *
+     * @throws RefException if the name is invalid or the tag already exists
+     */
+    void createTag(String name, ObjectId target);
+
+    /**
+     * Removes a tag.
+     *
+     * <p>The ref only. Whatever it pointed at — a commit, or a tag object and the
+     * history beneath it — stays exactly where it is, as branch deletion leaves
+     * its commits. Reclaiming storage remains a separate thing somebody asks for.
+     *
+     * @return true if a tag was removed, false if there was nothing to remove
+     */
+    boolean deleteTag(String name);
 }

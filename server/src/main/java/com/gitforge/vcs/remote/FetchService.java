@@ -3,6 +3,7 @@ package com.gitforge.vcs.remote;
 import com.gitforge.vcs.object.Blob;
 import com.gitforge.vcs.object.Commit;
 import com.gitforge.vcs.object.ObjectId;
+import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
@@ -188,6 +189,15 @@ public final class FetchService {
                 yield ids;
             }
             case Tree tree -> tree.entries().stream().map(TreeEntry::id).toList();
+
+            // A peer advertises branches only, so a fetch walk cannot legitimately
+            // arrive at a tag: nothing in a branch's history names one. Reaching
+            // one means the peer sent something a fetch never asked for, and it is
+            // refused rather than followed.
+            case Tag tag -> throw new RemoteException(
+                    "The remote sent tag object " + tag.id()
+                            + "; tags are not transferred between repositories");
+
             case Blob ignored -> List.of();
         };
     }
