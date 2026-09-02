@@ -33,6 +33,7 @@ public final class FileSystemRefStore implements RefStore {
 
     private static final String REFS_DIRECTORY = "refs";
     private static final String HEADS_DIRECTORY = "heads";
+    private static final String REMOTES_DIRECTORY = "remotes";
     private static final String HEAD_FILE = "HEAD";
     private static final String SYMBOLIC_PREFIX = "ref: ";
     private static final String HEADS_PREFIX = "refs/heads/";
@@ -41,6 +42,7 @@ public final class FileSystemRefStore implements RefStore {
 
     private final Path repositoryRoot;
     private final Path headsRoot;
+    private final Path remotesRoot;
 
     public FileSystemRefStore(Path repositoryRoot) {
         if (repositoryRoot == null) {
@@ -48,6 +50,7 @@ public final class FileSystemRefStore implements RefStore {
         }
         this.repositoryRoot = repositoryRoot.toAbsolutePath().normalize();
         this.headsRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(HEADS_DIRECTORY);
+        this.remotesRoot = this.repositoryRoot.resolve(REFS_DIRECTORY).resolve(REMOTES_DIRECTORY);
         try {
             Files.createDirectories(headsRoot);
         } catch (IOException ex) {
@@ -116,7 +119,7 @@ public final class FileSystemRefStore implements RefStore {
             Files.delete(file);
             // Only the now-empty parents of a nested name are removed; the
             // commit and every object beneath it are untouched.
-            pruneEmptyParents(file.getParent());
+            pruneEmptyParents(file.getParent(), headsRoot);
         } catch (IOException ex) {
             throw new RefException("Could not delete branch " + name, ex);
         }
@@ -167,6 +170,117 @@ public final class FileSystemRefStore implements RefStore {
             case Head.OnBranch onBranch -> getBranch(onBranch.branch());
             case Head.Detached detached -> Optional.of(detached.commit());
         };
+    }
+
+    @Override
+    public List<RemoteRef> listRemoteRefs() {
+        if (!Files.isDirectory(remotesRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.walk(remotesRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
+                    .map(this::toRemoteRef)
+                    .flatMap(Optional::stream)
+                    .sorted(Comparator.comparing(RemoteRef::qualifiedName))
+                    .toList();
+        } catch (IOException ex) {
+            throw new RefException("Could not list remote refs in " + remotesRoot, ex);
+        }
+    }
+
+    @Override
+    public Optional<ObjectId> getRemoteRef(String remote, String branch) {
+        Path file = remoteRefPath(remote, branch);
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(readCommitId(file, "Remote ref " + remote + "/" + branch));
+    }
+
+    @Override
+    public void setRemoteRef(String remote, String branch, ObjectId commit) {
+        requireCommit(commit);
+        Path file = remoteRefPath(remote, branch);
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException ex) {
+            throw new RefException("Could not create directory for remote ref " + remote + "/" + branch, ex);
+        }
+        writeAtomically(file, commit.toHex() + "\n");
+    }
+
+    @Override
+    public boolean deleteRemoteRef(String remote, String branch) {
+        Path file = remoteRefPath(remote, branch);
+        if (!Files.isRegularFile(file)) {
+            return false;
+        }
+        try {
+            Files.delete(file);
+            pruneEmptyParents(file.getParent(), remotesRoot);
+            return true;
+        } catch (IOException ex) {
+            throw new RefException("Could not delete remote ref " + remote + "/" + branch, ex);
+        }
+    }
+
+    @Override
+    public int deleteRemoteRefs(String remote) {
+        RemoteName.validate(remote);
+        int removed = 0;
+        for (RemoteRef ref : listRemoteRefs()) {
+            if (ref.remote().equals(remote) && deleteRemoteRef(remote, ref.branch())) {
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Reads one tracking ref back from its path.
+     *
+     * <p>Empty rather than throwing when the path does not describe a
+     * remote-and-branch pair. A directory that somehow holds a file directly under
+     * {@code refs/remotes/} names no branch, and refusing to list every other ref
+     * because one entry is unreadable would make the store less useful exactly
+     * when it most needs inspecting.
+     */
+    private Optional<RemoteRef> toRemoteRef(Path file) {
+        String relative = remotesRoot.relativize(file).toString().replace('\\', '/');
+        int separator = relative.indexOf('/');
+        if (separator <= 0 || separator == relative.length() - 1) {
+            return Optional.empty();
+        }
+        String remote = relative.substring(0, separator);
+        String branch = relative.substring(separator + 1);
+        try {
+            return Optional.of(new RemoteRef(
+                    remote, branch, readCommitId(file, "Remote ref " + relative)));
+        } catch (RefException ex) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The file backing a remote-tracking ref, after confirming the resolved path
+     * is still inside {@code refs/remotes}.
+     *
+     * <p>Both halves are validated first — {@link RemoteName} for the remote and
+     * {@link BranchName} for the branch — and this check is independent of both,
+     * because a branch name here arrives from another server rather than from a
+     * person using this one.
+     */
+    private Path remoteRefPath(String remote, String branch) {
+        RemoteName.validate(remote);
+        BranchName.validate(branch);
+
+        Path resolved = remotesRoot.resolve(remote).resolve(branch).normalize();
+        if (!resolved.startsWith(remotesRoot)) {
+            throw new RefException("Remote ref escapes the reference directory: " + remote + "/" + branch);
+        }
+        return resolved;
     }
 
     /**
@@ -233,10 +347,10 @@ public final class FileSystemRefStore implements RefStore {
         }
     }
 
-    /** Removes directories left empty by a deletion, stopping at {@code refs/heads}. */
-    private void pruneEmptyParents(Path directory) throws IOException {
+    /** Removes directories left empty by a deletion, stopping at {@code root}. */
+    private void pruneEmptyParents(Path directory, Path root) throws IOException {
         Path current = directory;
-        while (current != null && !current.equals(headsRoot) && current.startsWith(headsRoot)) {
+        while (current != null && !current.equals(root) && current.startsWith(root)) {
             try (Stream<Path> entries = Files.list(current)) {
                 if (entries.findAny().isPresent()) {
                     return;
