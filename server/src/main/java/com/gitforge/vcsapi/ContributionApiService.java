@@ -122,7 +122,7 @@ public class ContributionApiService {
         try {
             VcsRepository vcs = factory.open(VcsRepositoryProvider.storageIdOf(repo));
 
-            for (ObjectId id : reachableCommits(vcs)) {
+            for (ObjectId id : vcs.statistics().reachableCommits()) {
                 Commit commit = vcs.objects().readCommit(id);
 
                 if (!subject.getEmail().equalsIgnoreCase(commit.author().email())) {
@@ -140,22 +140,6 @@ public class ContributionApiService {
             return Map.of();
         }
         return counts;
-    }
-
-    /**
-     * Every commit reachable from any branch, counted once.
-     *
-     * <p>Work on a side branch is still work; a commit reachable from two
-     * branches is still one commit.
-     */
-    private static Set<ObjectId> reachableCommits(VcsRepository vcs) {
-        Set<ObjectId> reachable = new LinkedHashSet<>();
-        var graph = new com.gitforge.vcs.graph.CommitGraph(vcs.objects());
-
-        for (String branch : vcs.branches().listBranches()) {
-            vcs.branches().getBranch(branch).ifPresent(tip -> reachable.addAll(graph.bfs(tip)));
-        }
-        return reachable;
     }
 
     /** The subject's repositories that {@code viewer} is allowed to see. */
