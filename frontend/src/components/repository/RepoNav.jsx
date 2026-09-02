@@ -12,6 +12,7 @@ import {
   GraphIcon,
   IssueOpenedIcon,
   ShieldCheckIcon,
+  TagIcon,
 } from "@primer/octicons-react";
 
 import { PAGE_GUTTER, PAGE_MAX_WIDTHS } from "../layout/pageBounds";
@@ -35,6 +36,7 @@ const TABS = [
   { key: "merkle", label: "Objects", icon: FileDirectoryIcon, path: "merkle" },
   { key: "integrity", label: "Integrity", icon: ShieldCheckIcon, path: "integrity" },
   { key: "branches", label: "Branches", icon: GitBranchIcon, path: "branches" },
+  { key: "releases", label: "Releases", icon: TagIcon, path: "releases" },
   { key: "issues", label: "Issues", icon: IssueOpenedIcon, path: "issues" },
   { key: "insights", label: "Insights", icon: GraphIcon, path: "insights" },
 ];
