@@ -62,4 +62,47 @@ public interface RefStore {
      *     freshly initialised repository with no commits
      */
     Optional<ObjectId> resolveHead();
+
+    /**
+     * Every remote-tracking ref this repository holds.
+     *
+     * <p>Deliberately not folded into {@link #listBranches()}. A tracking ref
+     * records what someone else's branch looked like, and treating the two alike
+     * is how a fetch starts appearing as local work.
+     *
+     * <p>Returns the ids alongside the names because the callers that need this
+     * list — advertisement, and garbage collection — need both, and asking for
+     * them separately would read the store twice for one answer.
+     */
+    List<RemoteRef> listRemoteRefs();
+
+    /** Where {@code branch} on {@code remote} stood at the last fetch, if it is tracked. */
+    Optional<ObjectId> getRemoteRef(String remote, String branch);
+
+    /**
+     * Records where a remote's branch now stands.
+     *
+     * <p>Creates or replaces; a tracking ref has no "already exists" failure,
+     * because a fetch that finds the remote unchanged and a fetch that finds it
+     * moved should behave the same way.
+     */
+    void setRemoteRef(String remote, String branch, ObjectId commit);
+
+    /**
+     * Forgets one remote-tracking ref.
+     *
+     * @return true if a ref was removed, false if there was nothing to remove
+     */
+    boolean deleteRemoteRef(String remote, String branch);
+
+    /**
+     * Forgets every tracking ref for one remote.
+     *
+     * <p>The objects beneath them are untouched, exactly as branch deletion leaves
+     * its commits: this drops references, and reclaiming storage stays a separate
+     * thing somebody asks for.
+     *
+     * @return how many refs were removed
+     */
+    int deleteRemoteRefs(String remote);
 }

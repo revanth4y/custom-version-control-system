@@ -42,6 +42,8 @@ import java.util.Set;
  *   <li>every branch tip;
  *   <li>whatever HEAD resolves to — which for a detached HEAD is a commit no
  *       branch names, and is exactly the case a branches-only traversal loses;
+ *   <li>every remote-tracking ref, because a fetched tip is spoken for even
+ *       though no local branch reaches it;
  *   <li>the tree recorded in {@link WorkTreeState}, when a working tree has been
  *       materialized. That is a tree rather than a commit, and it is deliberately
  *       not derived from HEAD, so nothing else in the root set implies it.
@@ -49,9 +51,9 @@ import java.util.Set;
  *
  * <p>There are no other persistent references. The engine has no tags — its
  * {@link com.gitforge.vcs.object.ObjectType} admits only blobs, trees and commits
- * — no remotes and no reflog, and the database stores no object ids at all, so
- * {@code refs/heads}, {@code HEAD} and {@code WORKTREE} are the complete set of
- * places an object can be spoken for.
+ * — and no reflog, and the database stores no object ids at all, so
+ * {@code refs/heads}, {@code refs/remotes}, {@code HEAD} and {@code WORKTREE} are
+ * the complete set of places an object can be spoken for.
  *
  * <p><strong>Nothing is deleted unless the closure is complete.</strong> If any
  * object in it cannot be read — missing, or damaged past parsing — then what the
@@ -240,6 +242,13 @@ public final class GarbageCollector {
             refs.getBranch(branch).ifPresent(roots::add);
         }
         refs.resolveHead().ifPresent(roots::add);
+
+        // Fetched tips. An object reachable only through a remote-tracking ref is
+        // still an object this repository asked for and can still show, so it is
+        // spoken for exactly as a branch tip is. Leaving these out would make an
+        // ordinary sweep delete everything a fetch had just brought in.
+        refs.listRemoteRefs().forEach(ref -> roots.add(ref.commit()));
+
         if (workTree != null) {
             workTree.materializedTree().ifPresent(roots::add);
         }

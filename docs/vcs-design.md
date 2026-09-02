@@ -154,9 +154,13 @@ Slashes are allowed, so `feature/login` and `bugfix/auth/token` work and nest as
 directories under `refs/heads/`. The rules reject what would make a ref
 ambiguous or a path unsafe.
 
-> **Divergence from Git.** No reflog, no packed-refs, no remote-tracking
-> branches, no tags. Every object is stored individually — there are no pack
-> files, so a large repository costs one file per object.
+> **Divergence from Git.** No reflog, no packed-refs, no tags. Every object is
+> stored individually — there are no pack files, so a large repository costs one
+> file per object.
+>
+> Remote-tracking refs do exist, at `refs/remotes/<remote>/<branch>`, but they
+> are not branches: `listBranches()` walks `refs/heads` and nothing else, so a
+> fetched tip never appears as local work. They are garbage-collection roots.
 
 ## Diffing
 
@@ -333,13 +337,106 @@ Honest list, so nothing above reads as more than it is:
 
 - No pack files, no delta compression — one file per object
 - No rename detection
-- No tags, no remotes, no reflog, no packed-refs
+- No tags, no reflog, no packed-refs
+- No pack-based transfer: objects cross the wire one at a time, base64-encoded
+- No force push, no push-based ref deletion, no shallow or partial clone
+- No Git wire-protocol compatibility and no SSH transport: remotes are other GitForge servers, over HTTP
 - No automatic garbage collection: collection happens only when asked for, and never on a schedule
 - No reflog, so a swept branch tip is not recoverable
 - No resolution of a conflict once reported: conflicting regions are named, not editable
 - No submodules, no symlink entries, no `.gitignore` semantics
 - Criss-cross merges pick one base rather than merging bases recursively
 - Single-node storage: no replication, no sharding
+
+## Remotes
+
+A repository can synchronise with one served by another GitForge server. The two
+share nothing but HTTP: no filesystem, no database, no assumption that the other
+side is trustworthy.
+
+**Configuration lives on disk.** A `REMOTES` file sits beside `HEAD`, one
+tab-separated `name<TAB>url` per line, written through a temporary file and an
+atomic move like every other mutable file here. A remote name cannot contain a
+tab — `RemoteName` admits letters, digits, dash, underscore and dot — so the
+parse is unambiguous. PostgreSQL is untouched: it still holds four tables and no
+object ids at all.
+
+**Remote-tracking refs are not branches.** They live at
+`refs/remotes/<remote>/<branch>`, beside `refs/heads` rather than inside it, and
+`listBranches()` walks the heads directory only. A fetched tip therefore never
+appears in the branch list, in revision resolution, or in the statistics. Both
+halves of the name are validated on every use, because the branch half arrives
+from another server rather than from a person using this one, and the resolved
+path is then checked against the remotes root independently of those rules.
+
+> **They are garbage-collection roots.** An object reachable only through a
+> fetched tip is still an object this repository asked for. Without that,
+> the first sweep after a fetch would delete everything the fetch brought in.
+
+### Fetch
+
+The walk is driven from the receiving side:
+
+```
+  ask the peer for its branch tips
+  repeat:
+      of what we now reference, which do we not hold?
+      ask for those, verify each, store it
+      expand what arrived, and go again
+  until nothing is missing
+```
+
+The peer only ever answers "here are the objects with these ids". It is never
+asked to work out what is needed, so it cannot steer the walk, and an object
+already held is never requested. Each round strictly shrinks what remains, so the
+walk terminates; a round ceiling exists for a peer that answers without sending.
+
+Objects travel uncompressed and base64-encoded — the canonical form, not whatever
+the sender happened to have on disk. That is the point: an id is the SHA-1 of the
+uncompressed representation, so the receiver recomputes it rather than trusting
+that the sender stored anything honestly.
+
+Tracking refs move last, once every object beneath every tip is durable, and the
+whole fetch runs inside one shared lock. A fetch that fails part-way leaves
+objects on disk and no reference pointing at them — unreachable, harmless, and
+collectable, exactly as an interrupted commit is.
+
+### Push
+
+The sender computes the closure locally, asks the peer which objects it lacks,
+and sends only those. **The decision to accept is the peer's**: this side cannot
+know the peer's tip without taking its word for it, and a check made on the
+sender's word is not a check.
+
+The receiving side verifies every object, walks the whole history beneath the
+proposed tip against its own store, and refuses if any of it is absent. Only then
+does it check the move is a fast-forward, and only then does the branch move.
+
+**Fast-forward only, one branch per push.** A push that would drop commits is
+refused rather than resolved — there is no reflog to recover them from. One
+branch because `RefStore` moves a single ref atomically and has no all-or-nothing
+primitive for several; restricting the scope makes the existing update exactly
+sufficient and removes the partially-applied push as an outcome.
+
+> **Sending in several batches.** Objects may arrive across more than one call,
+> with only the last asking for a branch move. A collection on the peer can run
+> between them and remove what nothing references yet. That costs a retry and
+> nothing else: the closure check happens inside the same locked call that moves
+> the branch, so a partially-collected push fails as incomplete rather than
+> moving a reference onto history that is no longer whole.
+
+### What crosses the wire
+
+| | |
+| --- | --- |
+| `GET /remote-refs` | branches and their tips |
+| `GET /remote-objects?id=…` | those objects |
+| `GET /remote-objects/missing?id=…` | which of those this repository lacks |
+| `POST /remote-objects/receive` | objects, and optionally a branch move |
+
+Reads are GETs because reads here are anonymous on a public repository, exactly
+as every other read is. Ids travel in the query string, bounded at 32 per request
+so a URL stays short.
 
 ## Tests
 

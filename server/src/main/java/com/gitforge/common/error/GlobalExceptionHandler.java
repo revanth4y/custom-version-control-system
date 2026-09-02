@@ -3,6 +3,8 @@ package com.gitforge.common.error;
 import com.gitforge.vcs.object.AmbiguousObjectIdException;
 import com.gitforge.vcs.object.CorruptObjectException;
 import com.gitforge.vcs.ref.RefException;
+import com.gitforge.vcs.remote.NotFastForwardException;
+import com.gitforge.vcs.remote.RemoteException;
 import com.gitforge.vcs.storage.ObjectStoreException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -136,6 +138,42 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleReference(RefException ex, HttpServletRequest request) {
         ApiError body = ApiError.of(409, "CONFLICT", ex.getMessage(), request.getRequestURI());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * A push would have moved a branch somewhere its current tip does not lead.
+     *
+     * <p>409 rather than 400, because nothing about the request was malformed: the
+     * caller asked for something coherent and the repository's state is why it
+     * cannot happen. It is also the one remote failure a caller can act on — fetch,
+     * merge, push again — which is why it is told apart from the rest.
+     */
+    @ExceptionHandler(NotFastForwardException.class)
+    public ResponseEntity<ApiError> handleNotFastForward(
+            NotFastForwardException ex, HttpServletRequest request) {
+
+        ApiError body = ApiError.of(409, "CONFLICT", ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * A remote operation that could not be completed.
+     *
+     * <p>422 rather than 400 or 502. The request was well-formed and the caller is
+     * entitled to make it; what failed is the transfer — an object that did not
+     * hash to its id, a history that arrived incomplete, a peer that would not
+     * answer. Saying "unprocessable" keeps that distinct from a malformed request
+     * on one side and a broken server on the other.
+     *
+     * <p>The message is returned because every one of them describes something the
+     * caller can act on, and none of them exposes anything about this server that a
+     * peer did not already tell it.
+     */
+    @ExceptionHandler(RemoteException.class)
+    public ResponseEntity<ApiError> handleRemote(RemoteException ex, HttpServletRequest request) {
+        ApiError body = ApiError.of(
+                422, "REMOTE_TRANSFER_FAILED", ex.getMessage(), request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
     }
 
     /**
