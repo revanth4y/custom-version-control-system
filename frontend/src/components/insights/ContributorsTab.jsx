@@ -113,7 +113,9 @@ const ContributorsTab = ({ range, contributors }) => {
                     </Text>
                     <Text sx={{ fontSize: 0, color: "fg.muted" }}>
                       {percent(person.commits, windowTotal)}
-                      {person.merges > 0 ? ` · ${count(person.merges)} merges` : ""}
+                      {person.merges > 0
+                        ? ` · ${count(person.merges)} ${person.merges === 1 ? "merge" : "merges"}`
+                        : ""}
                     </Text>
                   </Box>
 

@@ -112,7 +112,7 @@ const OverviewTab = ({ overview, dag, refs }) => {
               value={average ?? "—"}
               hint={
                 spanDays
-                  ? `over the ${count(spanDays)} days from first to latest commit`
+                  ? `over the ${count(spanDays)} ${spanDays === 1 ? "day" : "days"} from first to latest commit`
                   : "no history to average"
               }
             />

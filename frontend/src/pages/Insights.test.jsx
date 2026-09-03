@@ -344,6 +344,31 @@ describe("Insights — Overview", () => {
     );
     expect(card?.textContent).toContain("4");
   });
+
+  /*
+   * The averaging window is written out in words, so it has to agree with the
+   * number in front of it. A single-day history is the common case for a young
+   * repository and is exactly where "1 days" would show.
+   */
+  it("says 'days' when the history spans more than one", async () => {
+    await render();
+
+    // 2026-08-01 to 2026-08-09 inclusive.
+    expect(text()).toContain("over the 9 days from first to latest commit");
+  });
+
+  it("says 'day' when the history spans exactly one", async () => {
+    commits.mockResolvedValue({
+      ...DAG,
+      earliestCommit: "2026-08-09T09:00:00Z",
+      latestCommit: "2026-08-09T17:00:00Z",
+    });
+
+    await render();
+
+    expect(text()).toContain("over the 1 day from first to latest commit");
+    expect(text()).not.toContain("1 days");
+  });
 });
 
 describe("Insights — Activity", () => {
@@ -420,6 +445,50 @@ describe("Insights — Contributors", () => {
     await openTab("Contributors");
 
     expect(text().indexOf("Ada")).toBeLessThan(text().indexOf("Linus"));
+  });
+
+  /* The merge count sits inline in a sentence, so it has to read as one. */
+  it("says 'merge' for one and 'merges' for several", async () => {
+    contributors.mockResolvedValue({
+      from: "2026-08-01",
+      to: "2026-08-04",
+      total: 2,
+      contributors: [
+        {
+          name: "Ada",
+          email: "ada@example.test",
+          commits: 9,
+          merges: 2,
+          firstCommit: "2026-08-01",
+          lastCommit: "2026-08-03",
+        },
+        {
+          name: "Linus",
+          email: "linus@example.test",
+          commits: 3,
+          merges: 1,
+          firstCommit: "2026-08-02",
+          lastCommit: "2026-08-02",
+        },
+      ],
+    });
+
+    await render();
+    await openTab("Contributors");
+
+    expect(text()).toContain("2 merges");
+    expect(text()).toContain("1 merge");
+    // "1 merge" alone is a substring of "1 merges", so this is what pins it.
+    expect(text()).not.toContain("1 merges");
+  });
+
+  it("says nothing about merges for an author who has none", async () => {
+    await render();
+    await openTab("Contributors");
+
+    // Ada has one merge in the default fixture; Linus has none.
+    expect(text()).toContain("1 merge");
+    expect(text()).not.toContain("0 merge");
   });
 });
 
