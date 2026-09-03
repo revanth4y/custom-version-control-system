@@ -48,9 +48,9 @@ public final class CliRemoteTransport implements RemoteTransport {
     public List<RemoteBranch> advertise(Remote remote) {
         JsonNode response = api.get(pathFor(remote) + "/remote-refs");
         List<RemoteBranch> branches = new ArrayList<>();
-        for (JsonNode row : arrayOf(response, "branches")) {
+        for (JsonNode row : arrayOf(response, "refs")) {
             branches.add(new RemoteBranch(
-                    row.path("name").asString(),
+                    row.path("branch").asString(),
                     row.path("commit").asString()));
         }
         context.out().trace("remote advertises " + branches.size() + " branch(es)");
@@ -67,8 +67,7 @@ public final class CliRemoteTransport implements RemoteTransport {
                     "Asked about " + ids.size() + " objects at once; the limit is "
                             + TransferLimits.MAX_IDS_PER_REQUEST);
         }
-        JsonNode response = api.get(
-                pathFor(remote) + "/remote-objects/missing?ids=" + String.join(",", ids));
+        JsonNode response = api.get(pathFor(remote) + "/remote-objects/missing" + idQuery(ids));
         List<String> missing = new ArrayList<>();
         for (JsonNode row : arrayOf(response, "missing")) {
             missing.add(row.asString());
@@ -81,8 +80,7 @@ public final class CliRemoteTransport implements RemoteTransport {
         if (ids.isEmpty()) {
             return List.of();
         }
-        JsonNode response = api.get(
-                pathFor(remote) + "/remote-objects?ids=" + String.join(",", ids));
+        JsonNode response = api.get(pathFor(remote) + "/remote-objects" + idQuery(ids));
         List<TransferredObject> objects = new ArrayList<>();
         for (JsonNode row : arrayOf(response, "objects")) {
             objects.add(new TransferredObject(
@@ -141,6 +139,22 @@ public final class CliRemoteTransport implements RemoteTransport {
         }
         String tail = url.substring(marker);
         return tail.endsWith("/") ? tail.substring(0, tail.length() - 1) : tail;
+    }
+
+    /**
+     * Object ids as a repeated {@code id} parameter.
+     *
+     * <p>Spring binds {@code ?id=a&id=b} to a list. Comma-joining them into one
+     * value binds to a single-element list containing the comma-joined string,
+     * which the server then reports as an unknown object rather than as a
+     * malformed request — a failure that looks like missing data.
+     */
+    private static String idQuery(List<String> ids) {
+        StringBuilder query = new StringBuilder();
+        for (String id : ids) {
+            query.append(query.isEmpty() ? '?' : '&').append("id=").append(ApiClient.segment(id));
+        }
+        return query.toString();
     }
 
     private static Iterable<JsonNode> arrayOf(JsonNode response, String field) {

@@ -531,7 +531,13 @@ public final class RemoteCommands {
 
         @Override
         public Object run(Context context, List<String> args) {
-            Object fetched = new RemoteFetch().run(context, args);
+            List<String> words = args.stream().filter(arg -> !arg.startsWith("--")).toList();
+            if (words.isEmpty() || words.size() > 2) {
+                throw CliException.usage(usage());
+            }
+            // Fetch takes only a remote. Passing the branch through as well made
+            // it a usage error, which then read as though pull itself was wrong.
+            Object fetched = new RemoteFetch().run(context, List.of(words.get(0)));
             if (context.options().dryRun() || context.options().preview()) {
                 Map<String, Object> data = new LinkedHashMap<>();
                 if (fetched instanceof Map<?, ?> source) {
@@ -543,7 +549,6 @@ public final class RemoteCommands {
             }
 
             Workspace workspace = Workspace.discover(context.sandbox(), ".");
-            List<String> words = args.stream().filter(arg -> !arg.startsWith("--")).toList();
             Remote remote = require(workspace, words.get(0));
             String branch = words.size() == 2 ? words.get(1)
                     : workspace.repository().branches().currentBranch()

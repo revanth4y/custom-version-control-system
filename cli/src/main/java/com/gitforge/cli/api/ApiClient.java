@@ -55,10 +55,21 @@ public final class ApiClient {
     public ApiClient(Context context) {
         this.context = context;
         this.base = trimTrailingSlash(baseUrl(context));
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(Math.min(30, context.options().timeoutSeconds())))
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
+        try {
+            this.http = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(Math.min(30, context.options().timeoutSeconds())))
+                    .followRedirects(HttpClient.Redirect.NEVER)
+                    .build();
+        } catch (RuntimeException | Error unavailable) {
+            // Java's HTTP client needs an NIO selector, and some hosts refuse to
+            // open one — a Windows machine whose firewall blocks the loopback
+            // socket pair the JDK uses will fail here before any request is made.
+            // Reporting that as a transport failure, with the cause named, is far
+            // more useful than an internal error the caller cannot act on.
+            throw new CliException("REMOTE_TRANSFER_FAILED", ExitCode.REMOTE_TRANSFER,
+                    "Could not start an HTTP client on this host: " + unavailable.getMessage()
+                            + ". Local commands still work; anything needing the server does not.");
+        }
     }
 
     /**
