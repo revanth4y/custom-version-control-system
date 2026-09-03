@@ -5,6 +5,7 @@ import com.gitforge.cli.security.SandboxPath;
 import com.gitforge.vcs.repository.RepositoryId;
 import com.gitforge.vcs.repository.VcsRepository;
 import com.gitforge.vcs.repository.VcsRepositoryFactory;
+import com.gitforge.vcs.worktree.WorkTreeState;
 import com.gitforge.vcs.worktree.WorkingTree;
 
 import java.io.IOException;
@@ -49,12 +50,14 @@ public final class Workspace {
     private final VcsRepository repository;
     private final WorkingTree workingTree;
     private final Index index;
+    private final WorkTreeState workTreeState;
 
-    private Workspace(Path treeRoot, VcsRepository repository, WorkingTree workingTree) {
+    private Workspace(Path treeRoot, VcsRepository repository, WorkingTree workingTree, Path repositoryRoot) {
         this.treeRoot = treeRoot;
         this.repository = repository;
         this.workingTree = workingTree;
         this.index = new Index(treeRoot.resolve(METADATA).resolve("index"));
+        this.workTreeState = new WorkTreeState(repositoryRoot);
     }
 
     /**
@@ -74,8 +77,10 @@ public final class Workspace {
             throw CliException.failure("Could not create " + metadata + ": " + uncreatable.getMessage());
         }
         VcsRepositoryFactory factory = new VcsRepositoryFactory(metadata);
-        VcsRepository repository = factory.initialise(RepositoryId.of(REPOSITORY_ID), defaultBranch);
-        return new Workspace(tree, repository, new WorkingTree(tree, repository.objects()));
+        RepositoryId id = RepositoryId.of(REPOSITORY_ID);
+        VcsRepository repository = factory.initialise(id, defaultBranch);
+        return new Workspace(
+                tree, repository, new WorkingTree(tree, repository.objects()), factory.pathFor(id));
     }
 
     /**
@@ -100,7 +105,9 @@ public final class Workspace {
                                     + " does not contain a repository");
                 }
                 VcsRepository repository = factory.open(id);
-                return new Workspace(candidate, repository, new WorkingTree(candidate, repository.objects()));
+                return new Workspace(
+                        candidate, repository, new WorkingTree(candidate, repository.objects()),
+                        factory.pathFor(id));
             }
             if (candidate.equals(sandbox.root())) {
                 break;
@@ -127,6 +134,17 @@ public final class Workspace {
 
     public Index index() {
         return index;
+    }
+
+    /**
+     * What the working tree currently reflects.
+     *
+     * <p>Recorded so that checkout knows what it is replacing, and so that
+     * collection treats the materialized tree as a root — objects a checkout
+     * depends on must not be swept while the files are still on disk.
+     */
+    public WorkTreeState workTreeState() {
+        return workTreeState;
     }
 
     /** A path relative to the working tree root, using forward slashes. */

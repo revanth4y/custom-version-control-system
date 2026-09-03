@@ -30,6 +30,10 @@ public final class Registry {
 
     static {
         LocalCommands.registerAll();
+        RefCommands.registerAll();
+        MergeCommand.registerAll();
+        VerifyCommands.registerAll();
+        ExplainCommands.registerAll();
 
         register(new SandboxCommands.Status());
         register(new SandboxCommands.Init());

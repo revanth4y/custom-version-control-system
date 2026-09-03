@@ -118,6 +118,15 @@ public final class Cli {
         } catch (CliException refused) {
             return report(output, redactor, commandName, arguments,
                     refused.code(), refused.getMessage(), refused.exitCode());
+        } catch (com.gitforge.vcs.worktree.CheckoutBlockedException blocked) {
+            // The working tree holds changes the checkout would destroy. The
+            // repository is fine and the command is fine; the state cannot take
+            // this operation, which is what CONFLICT means.
+            return report(output, redactor, commandName, arguments,
+                    "CONFLICT", String.valueOf(blocked.getMessage()), ExitCode.CONFLICT);
+        } catch (com.gitforge.vcs.ref.RefException missing) {
+            return report(output, redactor, commandName, arguments,
+                    "NOT_FOUND", String.valueOf(missing.getMessage()), ExitCode.NOT_FOUND);
         } catch (IllegalArgumentException badInput) {
             // The engine validates with these; a bad ref name is the caller's
             // mistake, not an internal failure.

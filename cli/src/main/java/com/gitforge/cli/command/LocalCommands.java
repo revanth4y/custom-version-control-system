@@ -375,6 +375,11 @@ public final class LocalCommands {
             ObjectId commit = workspace.repository().commits()
                     .commit(branch, changes, author(context), message);
             workspace.index().clear();
+            // The files on disk now match this commit's tree. Recording that is
+            // not bookkeeping: checkout compares against it to decide whether it
+            // would destroy local work, and collection treats it as a root.
+            workspace.repository().reader().commit(commit)
+                    .ifPresent(recorded -> workspace.workTreeState().record(recorded.tree()));
             context.movedRef("refs/heads/" + branch);
 
             Map<String, Object> data = new LinkedHashMap<>();
