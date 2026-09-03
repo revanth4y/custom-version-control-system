@@ -8,6 +8,7 @@ import com.gitforge.vcs.object.Tag;
 import com.gitforge.vcs.object.Tree;
 import com.gitforge.vcs.object.TreeEntry;
 import com.gitforge.vcs.object.VcsObject;
+import com.gitforge.vcs.ref.ReferenceRoots;
 import com.gitforge.vcs.ref.RefStore;
 import com.gitforge.vcs.repository.RepositoryLock;
 import com.gitforge.vcs.storage.ObjectStore;
@@ -241,32 +242,7 @@ public final class GarbageCollector {
      * overlap.
      */
     private List<ObjectId> roots() {
-        List<ObjectId> roots = new ArrayList<>();
-
-        for (String branch : refs.listBranches()) {
-            refs.getBranch(branch).ifPresent(roots::add);
-        }
-        refs.resolveHead().ifPresent(roots::add);
-
-        // Fetched tips. An object reachable only through a remote-tracking ref is
-        // still an object this repository asked for and can still show, so it is
-        // spoken for exactly as a branch tip is. Leaving these out would make an
-        // ordinary sweep delete everything a fetch had just brought in.
-        refs.listRemoteRefs().forEach(ref -> roots.add(ref.commit()));
-
-        // Tags. A tag exists precisely so that a point in history stays
-        // reachable after the branch that produced it has moved on or been
-        // deleted, so a sweep that did not read them would destroy the one thing
-        // a tag is for. Unlike every other root this may name a tag object rather
-        // than a commit; the closure follows it on to its target.
-        for (String tag : refs.listTags()) {
-            refs.getTag(tag).ifPresent(roots::add);
-        }
-
-        if (workTree != null) {
-            workTree.materializedTree().ifPresent(roots::add);
-        }
-        return roots;
+        return ReferenceRoots.of(refs, workTree);
     }
 
     /**

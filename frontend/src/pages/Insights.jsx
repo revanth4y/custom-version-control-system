@@ -1,30 +1,60 @@
-import { useMemo } from "react";
+import { useState } from "react";
 import { Box, Heading, Text } from "@primer/react";
-import Octicon from "../components/common/Octicon";
-import { DatabaseIcon, FileIcon, GitBranchIcon, GitCommitIcon, GraphIcon } from "@primer/octicons-react";
+import { GraphIcon } from "@primer/octicons-react";
 
 import PageContainer from "../components/layout/PageContainer";
-import { AsyncBoundary, EmptyState } from "../components/common/states";
-import IdentityAvatar from "../components/common/IdentityAvatar";
+import { EmptyState } from "../components/common/states";
+import ActivityTab from "../components/insights/ActivityTab";
+import CommitsTab from "../components/insights/CommitsTab";
+import ContributorsTab from "../components/insights/ContributorsTab";
+import HealthTab from "../components/insights/HealthTab";
+import OverviewTab from "../components/insights/OverviewTab";
+import RefsTab from "../components/insights/RefsTab";
 import { useAsync } from "../hooks/useAsync";
 import { useRepository } from "../hooks/useRepository";
+import {
+  useActivityInsights,
+  useBranchInsights,
+  useCommitInsights,
+  useCommitSeries,
+  useContributorInsights,
+  useInsightsRange,
+  useRefInsights,
+  useRepositoryHealth,
+  useTagInsights,
+} from "../hooks/useInsights";
 import { insightsService } from "../services/insightsService";
-import { formatAbsoluteTime } from "../utils/dates";
-import { brand } from "../theme/gitforge";
+
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "activity", label: "Activity" },
+  { key: "commits", label: "Commits" },
+  { key: "contributors", label: "Contributors" },
+  { key: "refs", label: "Refs" },
+  { key: "health", label: "Health" },
+];
+
+const DEFAULT_RANGE = { from: "", to: "", bucket: "day" };
 
 /**
  * What the repository adds up to.
  *
- * Every figure comes from the endpoint, which recomputes them from the object
- * store on each call rather than reading a stored tally - so nothing here can
- * disagree with the history it describes. Nothing is estimated or filled in.
+ * Every figure comes from an endpoint that recomputes it from the object store
+ * on each call rather than reading a stored tally — so nothing here can disagree
+ * with the history it describes, and nothing is estimated or filled in.
+ *
+ * Only the visible tab fetches. Six surfaces loading eleven endpoints at once
+ * would make the cheap views wait on the expensive ones for data most visits
+ * never open, and the Health tab in particular must cost nothing until asked.
  */
 const Insights = () => {
   const { owner, name, head } = useRepository();
-  const insights = useAsync(() => insightsService.forRepository(owner, name), [owner, name]);
+  const [view, setView] = useState("overview");
 
-  const data = insights.data;
   const hasHistory = Boolean(head?.commit);
+
+  const activityRange = useInsightsRange();
+  const contributorRange = useInsightsRange();
 
   return (
     <PageContainer>
@@ -38,240 +68,120 @@ const Insights = () => {
       </Box>
 
       {!hasHistory ? (
-        <Panel>
-          <EmptyState
-            icon={GraphIcon}
-            title="Nothing to measure yet"
-            message="This repository has no commits, so there are no statistics to report."
-            minHeight="220px"
-          />
-        </Panel>
+        <EmptyState
+          icon={GraphIcon}
+          title="Nothing to measure yet"
+          message="This repository has no commits, so there are no statistics to report."
+          minHeight="220px"
+        />
       ) : (
-        <AsyncBoundary
-          loading={insights.loading}
-          error={insights.error}
-          onRetry={insights.reload}
-          loadingLabel="Computing insights"
-          minHeight="240px"
-        >
-          {data && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: ["repeat(2, minmax(0, 1fr))", "repeat(2, minmax(0, 1fr))", "repeat(4, minmax(0, 1fr))"],
-                  gap: 3,
-                }}
-              >
-                <Stat icon={GitCommitIcon} label="commits" value={data.commits} hint="reachable from any branch" />
-                <Stat icon={GitBranchIcon} label="branches" value={data.branches} hint="references in this repository" />
-                <Stat icon={FileIcon} label="files" value={data.files} hint="in the tree HEAD points at" />
-                <Stat icon={DatabaseIcon} label="stored objects" value={data.storedObjects} hint="blobs, trees and commits" />
-              </Box>
+        <>
+          <Box
+            role="tablist"
+            aria-label="Insights"
+            sx={{
+              display: "flex",
+              gap: 1,
+              mb: 3,
+              borderBottom: "1px solid",
+              borderColor: "border.default",
+              // Narrow screens scroll the tab strip rather than the page: the
+              // six names cannot fit at 375px, and wrapping them would push the
+              // content down by a whole row.
+              overflowX: "auto",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {TABS.map((tab) => {
+              const active = view === tab.key;
+              return (
+                <Box
+                  key={tab.key}
+                  as="button"
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(tab.key)}
+                  sx={{
+                    appearance: "none",
+                    background: "transparent",
+                    border: 0,
+                    borderBottom: "2px solid",
+                    borderColor: active ? "accent.emphasis" : "transparent",
+                    color: active ? "fg.default" : "fg.muted",
+                    cursor: "pointer",
+                    flex: "0 0 auto",
+                    fontSize: 1,
+                    fontWeight: active ? 600 : 400,
+                    px: 3,
+                    py: 2,
+                  }}
+                >
+                  {tab.label}
+                </Box>
+              );
+            })}
+          </Box>
 
-              <Section title="Contributors" count={data.contributors.length}>
-                <Contributors contributors={data.contributors} total={data.commits} />
-              </Section>
-
-              <Section title="Activity" count={data.activity.length} unit="day">
-                <Activity activity={data.activity} />
-              </Section>
-            </Box>
+          {view === "overview" && <OverviewPanel owner={owner} name={name} />}
+          {view === "activity" && <ActivityPanel owner={owner} name={name} range={activityRange} />}
+          {view === "commits" && <CommitsPanel owner={owner} name={name} />}
+          {view === "contributors" && (
+            <ContributorsPanel owner={owner} name={name} range={contributorRange} />
           )}
-        </AsyncBoundary>
+          {view === "refs" && <RefsPanel owner={owner} name={name} />}
+          {view === "health" && <HealthPanel owner={owner} name={name} />}
+        </>
       )}
     </PageContainer>
   );
 };
 
-const Stat = ({ icon, label, value, hint }) => (
-  <Box
-    sx={{
-      border: "1px solid",
-      borderColor: "border.default",
-      borderRadius: 2,
-      bg: "canvas.subtle",
-      px: 3,
-      py: 3,
-      minWidth: 0,
-    }}
-  >
-    <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
-      <Octicon icon={icon} size={14} sx={{ color: "fg.subtle" }} />
-      <Text sx={{ fontSize: 0, color: "fg.muted" }}>{label}</Text>
-    </Box>
-    <Text sx={{ display: "block", fontSize: 4, fontWeight: 600, lineHeight: 1.1 }}>
-      {value.toLocaleString()}
-    </Text>
-    <Text sx={{ display: "block", fontSize: 0, color: "fg.subtle", mt: 1 }}>{hint}</Text>
-  </Box>
-);
-
-/**
- * Who wrote the commits.
- *
- * Identity is the email, which is how the engine groups them: one person may
- * commit under several display names, but the address is what identifies them.
+/*
+ * Each panel is a component so that its hooks mount with the tab and unmount
+ * with it. Calling the hooks in the page body instead would fetch every surface
+ * on arrival — including for a repository with no commits at all, which has
+ * nothing to report and should ask the server for nothing.
  */
-const Contributors = ({ contributors, total }) => {
-  if (contributors.length === 0) {
-    return <Text sx={{ fontSize: 0, color: "fg.subtle" }}>No contributors recorded.</Text>;
-  }
 
-  return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      {contributors.map((contributor) => {
-        const share = total > 0 ? (contributor.commits / total) * 100 : 0;
-        return (
-          <Box key={contributor.email} sx={{ minWidth: 0 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1, minWidth: 0 }}>
-              <IdentityAvatar username={contributor.name || contributor.email} size={20} />
-              <Text sx={{ fontSize: 1, fontWeight: 600, overflowWrap: "anywhere" }}>
-                {contributor.name}
-              </Text>
-              <Text
-                sx={{
-                  fontSize: 0,
-                  color: "fg.subtle",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                }}
-                title={contributor.email}
-              >
-                {contributor.email}
-              </Text>
-              <Text sx={{ ml: "auto", fontSize: 0, color: "fg.muted", flexShrink: 0 }}>
-                {contributor.commits} {contributor.commits === 1 ? "commit" : "commits"}
-              </Text>
-            </Box>
-            <Box
-              aria-hidden="true"
-              sx={{ height: "6px", borderRadius: 999, bg: "border.muted", overflow: "hidden" }}
-            >
-              <Box sx={{ width: `${share}%`, height: "100%", bg: "accent.emphasis" }} />
-            </Box>
-          </Box>
-        );
-      })}
-    </Box>
-  );
+const useOverview = (owner, name) =>
+  useAsync(() => insightsService.forRepository(owner, name), [owner, name]);
+
+const OverviewPanel = ({ owner, name }) => {
+  const overview = useOverview(owner, name);
+  const dag = useCommitInsights(owner, name);
+  const refs = useRefInsights(owner, name);
+  return <OverviewTab overview={overview} dag={dag} refs={refs} />;
 };
 
-/**
- * Commits per day, over the days that actually have them.
- *
- * Unlike the contribution calendar, this endpoint reports only days with
- * activity - it does not fill the gaps. Drawing it as a calendar would invent
- * the days in between and claim they were empty, when the endpoint never said
- * so. A bar per reported day says exactly what is known and no more.
- */
-const Activity = ({ activity }) => {
-  const max = useMemo(
-    () => activity.reduce((most, day) => Math.max(most, day.count), 0),
-    [activity],
-  );
-
-  if (activity.length === 0) {
-    return <Text sx={{ fontSize: 0, color: "fg.subtle" }}>No commit activity recorded.</Text>;
-  }
-
-  const first = activity[0];
-  const last = activity[activity.length - 1];
-
-  return (
-    <Box>
-      <Box sx={{ overflowX: "auto", pb: 2 }}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 1,
-            height: "120px",
-            minWidth: "min-content",
-          }}
-        >
-          {activity.map((day) => (
-            <Box
-              key={day.date}
-              title={`${day.count} ${day.count === 1 ? "commit" : "commits"} on ${day.date}`}
-              sx={{
-                // Grows to share the width when there are few days, so a young
-                // repository does not draw a thumbnail chart in the corner of a
-                // wide card; capped so a single day is a bar and not a slab.
-                // Many days hit the 14px basis instead and the row scrolls.
-                flex: "1 1 14px",
-                minWidth: "14px",
-                maxWidth: "48px",
-                // A day with commits is never invisible, however small its share.
-                height: `${Math.max((day.count / max) * 100, 6)}%`,
-                borderRadius: 1,
-                bg: "accent.emphasis",
-                backgroundImage: `linear-gradient(${brand.accent}, ${brand.accentHover})`,
-              }}
-            />
-          ))}
-        </Box>
-      </Box>
-
-      <Text sx={{ display: "block", fontSize: 0, color: "fg.subtle", mt: 2 }}>
-        {activity.length === 1 ? (
-          <>All activity on {first.date}.</>
-        ) : (
-          <>
-            <Text as="span" title={formatAbsoluteTime(first.date)}>{first.date}</Text>
-            {" to "}
-            <Text as="span" title={formatAbsoluteTime(last.date)}>{last.date}</Text>
-            {" · only days with commits are shown · "}
-            {/* Without this a chart where every day scored the same is a row of
-                equal bars with nothing to read them against. */}
-            {`busiest day ${max} ${max === 1 ? "commit" : "commits"}`}
-          </>
-        )}
-      </Text>
-    </Box>
-  );
+const ActivityPanel = ({ owner, name, range }) => {
+  const series = useCommitSeries(owner, name, range.applied);
+  const activity = useActivityInsights(owner, name, range.applied);
+  return <ActivityTab range={range} series={series} activity={activity} />;
 };
 
-const Section = ({ title, count, unit, children }) => (
-  <Box sx={{ minWidth: 0 }}>
-    <Box sx={{ display: "flex", alignItems: "baseline", gap: 2, mb: 3 }}>
-      <Heading as="h3" sx={{ fontSize: 2, fontWeight: 600 }}>
-        {title}
-      </Heading>
-      <Text sx={{ fontSize: 0, color: "fg.subtle" }}>
-        {count} {unit ? `${unit}${count === 1 ? "" : "s"}` : ""}
-      </Text>
-    </Box>
-    <Box
-      sx={{
-        border: "1px solid",
-        borderColor: "border.default",
-        borderRadius: 2,
-        bg: "canvas.subtle",
-        px: 3,
-        py: 3,
-        minWidth: 0,
-      }}
-    >
-      {children}
-    </Box>
-  </Box>
-);
+const CommitsPanel = ({ owner, name }) => {
+  const dag = useCommitInsights(owner, name);
+  const overview = useOverview(owner, name);
+  const timeline = useCommitSeries(owner, name, DEFAULT_RANGE);
+  return <CommitsTab dag={dag} overview={overview} timeline={timeline} />;
+};
 
-const Panel = ({ children }) => (
-  <Box
-    sx={{
-      bg: "canvas.subtle",
-      border: "1px solid",
-      borderColor: "border.default",
-      borderRadius: 2,
-      overflow: "hidden",
-    }}
-  >
-    {children}
-  </Box>
-);
+const ContributorsPanel = ({ owner, name, range }) => {
+  const contributors = useContributorInsights(owner, name, range.applied);
+  return <ContributorsTab range={range} contributors={contributors} />;
+};
+
+const RefsPanel = ({ owner, name }) => {
+  const refs = useRefInsights(owner, name);
+  const branches = useBranchInsights(owner, name);
+  const tags = useTagInsights(owner, name);
+  return <RefsTab refs={refs} branches={branches} tags={tags} />;
+};
+
+const HealthPanel = ({ owner, name }) => {
+  const health = useRepositoryHealth(owner, name);
+  return <HealthTab {...health} />;
+};
 
 export default Insights;

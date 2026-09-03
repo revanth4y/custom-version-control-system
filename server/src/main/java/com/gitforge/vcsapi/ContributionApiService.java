@@ -1,6 +1,6 @@
 package com.gitforge.vcsapi;
 
-import com.gitforge.common.error.BadRequestException;
+import com.gitforge.insights.DateRange;
 import com.gitforge.repo.Repo;
 import com.gitforge.repo.RepoRepository;
 import com.gitforge.repo.RepoVisibility;
@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,12 +54,6 @@ public class ContributionApiService {
 
     private static final Logger log = LoggerFactory.getLogger(ContributionApiService.class);
 
-    /** A year of history, which is what a contribution calendar shows. */
-    private static final int DEFAULT_DAYS = 365;
-
-    /** Bounds the work: a request cannot ask the server to walk arbitrary history. */
-    private static final int MAX_DAYS = 366;
-
     private final UserService userService;
     private final RepoRepository repoRepository;
     private final VcsRepositoryFactory factory;
@@ -76,9 +69,9 @@ public class ContributionApiService {
     public ContributionsResponse contributions(String username, User viewer, LocalDate from, LocalDate to) {
         User subject = userService.requireByUsername(username);
 
-        LocalDate end = to == null ? LocalDate.now(ZoneOffset.UTC) : to;
-        LocalDate start = from == null ? end.minusDays(DEFAULT_DAYS - 1L) : from;
-        validateRange(start, end);
+        DateRange range = DateRange.resolve(from, to);
+        LocalDate start = range.from();
+        LocalDate end = range.to();
 
         Map<LocalDate, Integer> counts = new TreeMap<>();
         for (Repo repo : visibleRepositoriesOf(subject, viewer)) {
@@ -89,7 +82,7 @@ public class ContributionApiService {
         int total = 0;
         // Every day in the window is present, including empty ones, so the client
         // renders a calendar without having to fill gaps itself.
-        for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
+        for (LocalDate day : range.eachDay()) {
             int count = counts.getOrDefault(day, 0);
             days.add(new ContributionsResponse.Day(day, count));
             total += count;
@@ -122,7 +115,7 @@ public class ContributionApiService {
         try {
             VcsRepository vcs = factory.open(VcsRepositoryProvider.storageIdOf(repo));
 
-            for (ObjectId id : reachableCommits(vcs)) {
+            for (ObjectId id : vcs.statistics().reachableCommits()) {
                 Commit commit = vcs.objects().readCommit(id);
 
                 if (!subject.getEmail().equalsIgnoreCase(commit.author().email())) {
@@ -142,22 +135,6 @@ public class ContributionApiService {
         return counts;
     }
 
-    /**
-     * Every commit reachable from any branch, counted once.
-     *
-     * <p>Work on a side branch is still work; a commit reachable from two
-     * branches is still one commit.
-     */
-    private static Set<ObjectId> reachableCommits(VcsRepository vcs) {
-        Set<ObjectId> reachable = new LinkedHashSet<>();
-        var graph = new com.gitforge.vcs.graph.CommitGraph(vcs.objects());
-
-        for (String branch : vcs.branches().listBranches()) {
-            vcs.branches().getBranch(branch).ifPresent(tip -> reachable.addAll(graph.bfs(tip)));
-        }
-        return reachable;
-    }
-
     /** The subject's repositories that {@code viewer} is allowed to see. */
     private List<Repo> visibleRepositoriesOf(User subject, User viewer) {
         return subject.equals(viewer)
@@ -165,12 +142,4 @@ public class ContributionApiService {
                 : repoRepository.findByOwnerAndVisibilityOrderByUpdatedAtDesc(subject, RepoVisibility.PUBLIC);
     }
 
-    private static void validateRange(LocalDate start, LocalDate end) {
-        if (start.isAfter(end)) {
-            throw new BadRequestException("The start of the range must not be after its end");
-        }
-        if (ChronoUnit.DAYS.between(start, end) >= MAX_DAYS) {
-            throw new BadRequestException("The range must span at most " + MAX_DAYS + " days");
-        }
-    }
 }

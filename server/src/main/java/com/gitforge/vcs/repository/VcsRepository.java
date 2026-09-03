@@ -68,7 +68,10 @@ public final class VcsRepository {
         this.commits = new CommitService(objects, refs, branches, lock);
         this.merges = new MergeOrchestrator(objects, refs, branches, graph, lock);
         this.diffs = new DiffService(objects);
-        this.statistics = new RepositoryStatistics(objects, branches, graph);
+        // Null working tree for the same reason collection passes null below: a
+        // server-side repository is bare, so there is no materialized tree. Both
+        // now read the same root set, so a figure and a sweep cannot disagree.
+        this.statistics = new RepositoryStatistics(objects, branches, refs, null, graph);
 
         // Null working tree: a server-side repository is bare, as described above,
         // so there is no materialized tree to protect. The collector treats that
