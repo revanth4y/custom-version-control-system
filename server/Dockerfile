@@ -1,14 +1,22 @@
-# Build stage: dependencies are resolved in their own layer so that source-only
-# changes do not re-download the world on every rebuild.
+# Built from the repository root rather than from server/, because the server
+# now depends on the engine module and a build context of server/ cannot see it.
+#
+# Dependencies are resolved in their own layer so that source-only changes do
+# not re-download the world on every rebuild.
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /build
 
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN chmod +x mvnw && ./mvnw -B -q dependency:go-offline
+COPY engine/pom.xml engine/
+COPY server/pom.xml server/
+COPY cli/pom.xml cli/
+RUN chmod +x mvnw && ./mvnw -B -q -pl engine,server -am dependency:go-offline
 
-COPY src/ src/
-RUN ./mvnw -B -q clean package -DskipTests
+COPY engine/src/ engine/src/
+COPY server/src/ server/src/
+# -am builds the engine the server needs; the cli is not part of this image.
+RUN ./mvnw -B -q -pl server -am clean package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
@@ -25,7 +33,7 @@ VOLUME ["/var/lib/gitforge/storage"]
 
 USER gitforge
 
-COPY --from=build /build/target/*.jar app.jar
+COPY --from=build /build/server/target/*.jar app.jar
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

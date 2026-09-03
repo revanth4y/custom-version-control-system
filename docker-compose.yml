@@ -25,7 +25,11 @@ services:
       retries: 10
 
   server:
-    build: ./server
+    build:
+      # Root context: the server module depends on the engine module, which a
+      # context of ./server could not reach.
+      context: .
+      dockerfile: server/Dockerfile
     container_name: gitforge-server
     restart: unless-stopped
     depends_on:

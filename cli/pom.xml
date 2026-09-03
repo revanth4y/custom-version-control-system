@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>com.gitforge</groupId>
+		<artifactId>gitforge</artifactId>
+		<version>2.0.15</version>
+	</parent>
+
+	<artifactId>cli</artifactId>
+	<name>gitforge-cli</name>
+	<description>The GitForge command line client: local repository work against the engine, and everything the server owns over HTTP</description>
+
+	<!--
+	  What is deliberately absent is the point.
+
+	  There is no dependency on the server module, and none on Spring, JPA or
+	  Flyway. The engine gives this module every local operation; Jackson gives
+	  it the wire format the server already speaks; java.net.http gives it the
+	  wire. A command line tool that needed a PostgreSQL driver on its classpath
+	  to print its own help text would be telling on itself.
+
+	  There is also no argument parsing library. The dispatcher is small enough
+	  to read in one sitting, and the flags it accepts are the ones documented
+	  rather than whatever a library happens to allow.
+	-->
+	<dependencies>
+		<dependency>
+			<groupId>com.gitforge</groupId>
+			<artifactId>engine</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>tools.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.gitforge</groupId>
+			<artifactId>engine</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<finalName>gitforge</finalName>
+		<plugins>
+			<!--
+			  One runnable jar with its dependencies inside it, so the binary can be
+			  copied somewhere and run with `java -jar` without a classpath to assemble.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<configuration>
+					<finalName>gitforge</finalName>
+					<appendAssemblyId>false</appendAssemblyId>
+					<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>
+					<archive>
+						<manifest>
+							<mainClass>com.gitforge.cli.Main</mainClass>
+						</manifest>
+					</archive>
+				</configuration>
+				<executions>
+					<execution>
+						<id>bundle</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
