@@ -108,7 +108,16 @@ public final class SandboxPath {
             throw CliException.sandbox("Path contains a null byte");
         }
 
-        Path resolved = base.resolve(candidate).normalize();
+        Path resolved;
+        try {
+            resolved = base.resolve(candidate).normalize();
+        } catch (java.nio.file.InvalidPathException unrepresentable) {
+            // Windows forbids characters that are ordinary on POSIX. That is a
+            // property of the filesystem, not an attack, and saying so is more
+            // useful than letting a JDK exception surface.
+            throw CliException.usage(
+                    "That is not a usable file name on this system: " + candidate);
+        }
         if (!startsWithin(resolved, root)) {
             throw CliException.sandbox("Path escapes the sandbox: " + candidate);
         }
