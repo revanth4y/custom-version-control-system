@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>com.gitforge</groupId>
+		<artifactId>gitforge</artifactId>
+		<version>2.0.15</version>
+	</parent>
+
+	<artifactId>engine</artifactId>
+	<name>gitforge-engine</name>
+	<description>The version control engine: content-addressed objects, Merkle trees, a commit DAG, references, merging and collection</description>
+
+	<!--
+	  Deliberately empty of frameworks.
+
+	  Every class under com.gitforge.vcs imports only java.* and its own
+	  packages — no Spring, no Jakarta, no persistence, no HTTP. That was true
+	  before this module existed, which is why extracting it was a move rather
+	  than a rewrite, and keeping it true is what lets a command line tool
+	  depend on the engine without inheriting a web server and a database
+	  driver.
+
+	  Anything added here that pulls in a framework should be treated as a
+	  design error rather than a convenience.
+	-->
+	<dependencies>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<!--
+			  The fixtures under src/test — RepositoryFixture and the instrumented
+			  object stores — are used by the server's tests too. Publishing them
+			  as a test-jar shares them without moving test-only code into main.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>test-jar</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

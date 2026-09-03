@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Temurin 21 matches server/Dockerfile.
+      # Temurin 21 matches the builder stage in server/Dockerfile.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -93,9 +93,10 @@ jobs:
       # on Windows — so the totals legitimately differ by platform, and a
       # hardcoded number would be wrong somewhere by construction. Maven already
       # fails on any failure or error, which is the gate that matters.
+      # Run from the repository root: the build is a three-module reactor
+      # (engine, server, cli) and each module's tests belong to the gate.
       - name: Maven verify
         run: ./mvnw -B verify
-        working-directory: server
 
   docker:
     name: Docker — compose config and image builds
