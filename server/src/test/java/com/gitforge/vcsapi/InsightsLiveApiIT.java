@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.nio.channels.Selector;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -91,39 +93,59 @@ class InsightsLiveApiIT {
     private final RestTemplate http = new RestTemplate();
     private String token;
     private String base;
+    private String repository;
+    private String insights;
 
+    /**
+     * A fresh account and repository for every test.
+     *
+     * <p>The database and the storage root live for the whole class, so a shared
+     * owner would make the second test collide with the first: signup would be
+     * refused as a duplicate, and the commits, tags and releases would pile up in
+     * one repository until the counts these tests assert stopped describing
+     * anything. Naming the owner after the test method avoids both by
+     * construction — no request is ever expected to fail, and none is tolerated
+     * when it does, because {@link RestTemplate} throws on any non-2xx.
+     *
+     * <p>The name is lower-cased because usernames allow only letters, digits and
+     * single hyphens, and method names are camel case.
+     */
     @BeforeEach
-    void seed() throws Exception {
+    void seed(TestInfo test) throws Exception {
         base = "http://127.0.0.1:" + port + "/api/v1";
 
+        String owner = "qa-" + test.getTestMethod().orElseThrow().getName().toLowerCase(Locale.ROOT);
+        repository = "/repositories/" + owner + "/demo";
+        insights = repository + "/insights";
+
         post("/auth/signup", """
-                {"username":"octocat","email":"octocat@example.test","password":"correct horse battery"}
-                """, null);
+                {"username":"%s","email":"%s@example.test","password":"correct horse battery"}
+                """.formatted(owner, owner), null);
 
         JsonNode login = objectMapper.readTree(post("/auth/login", """
-                {"username":"octocat","password":"correct horse battery"}
-                """, null).getBody());
+                {"email":"%s@example.test","password":"correct horse battery"}
+                """.formatted(owner), null).getBody());
         token = login.get("token").asString();
 
         post("/repositories", """
                 {"name":"demo","description":"live qa","visibility":"PUBLIC"}
                 """, token);
 
-        post("/repositories/octocat/demo/commits", """
+        post(repository + "/commits", """
                 {"branch":"main","message":"First","changes":[
                   {"operation":"PUT","path":"a.txt","content":"1\\n"}]}
                 """, token);
 
-        post("/repositories/octocat/demo/commits", """
+        post(repository + "/commits", """
                 {"branch":"main","message":"Second","changes":[
                   {"operation":"PUT","path":"a.txt","content":"2\\n"}]}
                 """, token);
 
-        post("/repositories/octocat/demo/tags", """
+        post(repository + "/tags", """
                 {"name":"v1.0.0","target":"main","message":"Release 1.0"}
                 """, token);
 
-        post("/repositories/octocat/demo/releases", """
+        post(repository + "/releases", """
                 {"tag":"v1.0.0","name":"Version 1.0","draft":false,"prerelease":false}
                 """, token);
     }
@@ -149,50 +171,48 @@ class InsightsLiveApiIT {
                 base + path, HttpMethod.GET, new HttpEntity<>(headers), String.class).getBody());
     }
 
-    private static final String INSIGHTS = "/repositories/octocat/demo/insights";
-
     @Test
     @DisplayName("every Insights endpoint answers over HTTP with reconciling figures")
     void everyEndpointAnswersAndReconciles() throws Exception {
-        JsonNode overview = get("/repositories/octocat/demo/insights");
+        JsonNode overview = get(insights);
         assertThat(overview.get("commits").asInt()).isEqualTo(2);
 
-        JsonNode commits = get(INSIGHTS + "/commits");
+        JsonNode commits = get(insights + "/commits");
         assertThat(commits.get("commits").asInt()).isEqualTo(2);
         assertThat(commits.get("merges").asInt() + commits.get("nonMerges").asInt())
                 .isEqualTo(commits.get("commits").asInt());
         // The two endpoints share a root set and must not disagree.
         assertThat(commits.get("commits").asInt()).isEqualTo(overview.get("commits").asInt());
 
-        JsonNode series = get(INSIGHTS + "/commits/series");
+        JsonNode series = get(insights + "/commits/series");
         assertThat(series.get("total").asInt()).isEqualTo(2);
         assertThat(series.get("points")).hasSize(365);
 
-        JsonNode contributors = get(INSIGHTS + "/contributors");
+        JsonNode contributors = get(insights + "/contributors");
         assertThat(contributors.get("total").asInt()).isEqualTo(1);
 
-        JsonNode branches = get(INSIGHTS + "/branches");
+        JsonNode branches = get(insights + "/branches");
         assertThat(branches.get("total").asInt()).isEqualTo(1);
 
-        JsonNode refs = get(INSIGHTS + "/refs");
+        JsonNode refs = get(insights + "/refs");
         assertThat(refs.get("branches").asInt() + refs.get("tags").asInt()
                 + refs.get("remoteTrackingRefs").asInt())
                 .isEqualTo(refs.get("total").asInt());
 
-        JsonNode tags = get(INSIGHTS + "/tags");
+        JsonNode tags = get(insights + "/tags");
         assertThat(tags.get("annotated").asInt() + tags.get("lightweight").asInt())
                 .isEqualTo(tags.get("total").asInt());
         assertThat(tags.get("annotated").asInt()).isEqualTo(1);
 
-        JsonNode releases = get(INSIGHTS + "/releases");
+        JsonNode releases = get(insights + "/releases");
         assertThat(releases.get("published").asInt() + releases.get("drafts").asInt())
                 .isEqualTo(releases.get("total").asInt());
 
-        JsonNode issues = get(INSIGHTS + "/issues");
+        JsonNode issues = get(insights + "/issues");
         assertThat(issues.get("open").asInt() + issues.get("closed").asInt())
                 .isEqualTo(issues.get("total").asInt());
 
-        JsonNode storage = get(INSIGHTS + "/storage");
+        JsonNode storage = get(insights + "/storage");
         int counted = 0;
         long bytes = 0;
         for (JsonNode type : storage.get("byType")) {
@@ -202,11 +222,11 @@ class InsightsLiveApiIT {
         assertThat(counted).isEqualTo(storage.get("scannedObjects").asInt());
         assertThat(bytes).isEqualTo(storage.get("scannedBytes").asLong());
 
-        JsonNode health = get(INSIGHTS + "/health");
+        JsonNode health = get(insights + "/health");
         assertThat(health.get("scanned").asBoolean()).isFalse();
         assertThat(health.get("integrity").asString()).isEqualTo("NOT_VERIFIED");
 
-        JsonNode scanned = get(INSIGHTS + "/health?scan=true");
+        JsonNode scanned = get(insights + "/health?scan=true");
         assertThat(scanned.get("scanned").asBoolean()).isTrue();
         assertThat(scanned.get("reachableObjects").asLong()
                 + scanned.get("unreachableObjects").asInt())
@@ -217,12 +237,12 @@ class InsightsLiveApiIT {
     @DisplayName("the date-range boundary behaves the same over HTTP")
     void theRangeBoundaryHolds() {
         assertThat(http.getForEntity(
-                base + INSIGHTS + "/commits/series?from=2026-01-01&to=2026-12-31", String.class)
+                base + insights + "/commits/series?from=2026-01-01&to=2026-12-31", String.class)
                 .getStatusCode().value()).isEqualTo(200);
 
         try {
             http.getForEntity(
-                    base + INSIGHTS + "/commits/series?from=2026-01-01&to=2027-01-02", String.class);
+                    base + insights + "/commits/series?from=2026-01-01&to=2027-01-02", String.class);
             org.assertj.core.api.Assertions.fail("A 367-day range should have been refused");
         } catch (org.springframework.web.client.HttpClientErrorException ex) {
             assertThat(ex.getStatusCode().value()).isEqualTo(400);
@@ -232,18 +252,18 @@ class InsightsLiveApiIT {
     @Test
     @DisplayName("a draft release is invisible to an anonymous caller over HTTP")
     void draftsStayHidden() throws Exception {
-        post("/repositories/octocat/demo/tags", """
+        post(repository + "/tags", """
                 {"name":"v2.0.0","target":"main"}
                 """, token);
-        post("/repositories/octocat/demo/releases", """
+        post(repository + "/releases", """
                 {"tag":"v2.0.0","name":"Unfinished","draft":true,"prerelease":false}
                 """, token);
 
-        JsonNode anonymous = get(INSIGHTS + "/releases");
+        JsonNode anonymous = get(insights + "/releases");
         assertThat(anonymous.get("total").asInt()).isEqualTo(1);
         assertThat(anonymous.get("drafts").asInt()).isZero();
 
-        JsonNode owner = getAs(INSIGHTS + "/releases", token);
+        JsonNode owner = getAs(insights + "/releases", token);
         assertThat(owner.get("total").asInt()).isEqualTo(2);
         assertThat(owner.get("drafts").asInt()).isEqualTo(1);
     }
