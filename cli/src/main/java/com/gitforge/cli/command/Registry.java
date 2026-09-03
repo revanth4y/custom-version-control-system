@@ -34,6 +34,8 @@ public final class Registry {
         MergeCommand.registerAll();
         VerifyCommands.registerAll();
         ExplainCommands.registerAll();
+        ServerCommands.registerAll();
+        RemoteCommands.registerAll();
 
         register(new SandboxCommands.Status());
         register(new SandboxCommands.Init());
