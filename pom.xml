@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<!--
+	  Spring Boot is the parent of the aggregate rather than of one module, so
+	  every module resolves the same managed versions. Inheriting it costs the
+	  engine nothing: dependencyManagement declares versions, it does not add
+	  jars, and the engine module below declares no Spring dependency at all.
+	-->
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.0</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.gitforge</groupId>
+	<artifactId>gitforge</artifactId>
+	<version>2.0.16</version>
+	<packaging>pom</packaging>
+	<name>gitforge</name>
+	<description>GitForge: a GitHub-style application backed by a version control engine written from first principles</description>
+
+	<!--
+	  Three modules, and the dependency arrows only ever point one way:
+
+	      engine  ←  server
+	         ↑
+	         └────  cli
+
+	  The engine is the version control implementation and knows nothing about
+	  HTTP, persistence or Spring. The server serves it over the web. The cli
+	  drives it locally and talks to a server over HTTP for everything the
+	  server owns — and depends on the server module not at all, so a command
+	  line tool does not need a database driver on its classpath to start.
+	-->
+	<modules>
+		<module>engine</module>
+		<module>server</module>
+		<module>cli</module>
+	</modules>
+
+	<properties>
+		<java.version>21</java.version>
+		<jjwt.version>0.12.6</jjwt.version>
+
+		<!--
+		  Four advisories across three managed versions, ahead of the Spring
+		  Boot release that carries the fixes.
+
+		  Each is a patch release inside the range this project already manages,
+		  so the override raises a version rather than choosing a different one,
+		  and it disappears the moment the parent catches up.
+
+		  The two Jackson properties name whole BOMs, not single artifacts:
+		  databind, core and annotations move together, which is the only way
+		  they are supported.
+		-->
+
+		<!-- GHSA-j92g-9f8w-j867: channel binding could be dropped without saying so. -->
+		<postgresql.version>42.7.12</postgresql.version>
+
+		<!-- GHSA-5gvw-p9qm-jgwh, and the @JsonView and @JsonIgnoreProperties
+		     bypasses alongside it. This codebase uses none of those annotations,
+		     so nothing here was reachable; the bump costs a line and removes the
+		     question. -->
+		<jackson-bom.version>3.1.5</jackson-bom.version>
+		<jackson-2-bom.version>2.21.5</jackson-2-bom.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.gitforge</groupId>
+				<artifactId>engine</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.gitforge</groupId>
+				<artifactId>engine</artifactId>
+				<version>${project.version}</version>
+				<type>test-jar</type>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<!-- Integration tests (*IT) run in the verify phase, separate from unit tests. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

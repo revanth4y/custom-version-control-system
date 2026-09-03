@@ -3,47 +3,21 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.0</version>
-		<relativePath/>
+		<groupId>com.gitforge</groupId>
+		<artifactId>gitforge</artifactId>
+		<version>2.0.16</version>
 	</parent>
 
-	<groupId>com.gitforge</groupId>
 	<artifactId>server</artifactId>
-	<version>2.0.15</version>
 	<name>gitforge-server</name>
 	<description>GitForge server: GitHub-style application backed by a custom version control engine</description>
 
-	<properties>
-		<java.version>21</java.version>
-		<jjwt.version>0.12.6</jjwt.version>
-
-		<!--
-		  Four advisories across three managed versions, ahead of the Spring
-		  Boot release that carries the fixes.
-		
-		  Each is a patch release inside the range this project already manages,
-		  so the override raises a version rather than choosing a different one,
-		  and it disappears the moment the parent catches up.
-		
-		  The two Jackson properties name whole BOMs, not single artifacts:
-		  databind, core and annotations move together, which is the only way
-		  they are supported.
-		-->
-
-		<!-- GHSA-j92g-9f8w-j867: channel binding could be dropped without saying so. -->
-		<postgresql.version>42.7.12</postgresql.version>
-
-		<!-- GHSA-5gvw-p9qm-jgwh, and the @JsonView and @JsonIgnoreProperties
-		     bypasses alongside it. This codebase uses none of those annotations,
-		     so nothing here was reachable; the bump costs a line and removes the
-		     question. -->
-		<jackson-bom.version>3.1.5</jackson-bom.version>
-		<jackson-2-bom.version>2.21.5</jackson-2-bom.version>
-	</properties>
 
 	<dependencies>
+		<dependency>
+			<groupId>com.gitforge</groupId>
+			<artifactId>engine</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
@@ -140,6 +114,12 @@
 			<artifactId>mockito-core</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>com.gitforge</groupId>
+			<artifactId>engine</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -162,7 +142,10 @@
 			</plugin>
 			<!--
 			  Mockito is attached as an agent rather than letting it self-attach,
-			  which recent JDKs warn about and future ones will refuse.
+			  which recent JDKs warn about and future ones will refuse. This lives
+			  here rather than on the aggregate because this is the only module
+			  that depends on Mockito, and the property naming its jar does not
+			  resolve anywhere else.
 			-->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -172,21 +155,12 @@
 					<argLine>-javaagent:"${org.mockito:mockito-core:jar}"</argLine>
 				</configuration>
 			</plugin>
-			<!-- Integration tests (*IT) run in the verify phase, separate from unit tests. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
 				<configuration>
 					<argLine>-javaagent:"${org.mockito:mockito-core:jar}"</argLine>
 				</configuration>
-				<executions>
-					<execution>
-						<goals>
-							<goal>integration-test</goal>
-							<goal>verify</goal>
-						</goals>
-					</execution>
-				</executions>
 			</plugin>
 		</plugins>
 	</build>
