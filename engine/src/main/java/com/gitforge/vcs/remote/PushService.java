@@ -77,17 +77,196 @@ public final class PushService {
         }
         BranchName.validate(branch);
 
-        // The closure is read under the shared lock, so it cannot be computed
-        // against a repository a collection is midway through changing.
-        Snapshot snapshot = lock.reading(() -> snapshot(branch));
+        // Read under the shared lock, so neither the walk nor the objects it
+        // names can be collected midway through. That now spans the negotiation
+        // as well, because the walk asks the peer what it needs as it goes; the
+        // cost is that a collection here waits for the push, and the alternative
+        // - deciding what to send and then reading it outside the lock - is a
+        // push that fails because what it decided to send was swept in between.
+        Negotiated negotiated = lock.reading(() -> negotiate(remote, branch));
+        List<TransferredObject> payload = readIds(negotiated.wanted());
 
-        List<String> wanted = missingOnPeer(remote, snapshot.closure());
-        List<TransferredObject> payload = read(wanted);
-
-        return send(remote, token, branch, snapshot.tip(), payload);
+        try {
+            return send(remote, token, branch, negotiated.tip(), payload);
+        } catch (NotFastForwardException refused) {
+            // A considered answer about the branch, not a gap in the history.
+            throw refused;
+        } catch (RemoteException failed) {
+            if (!negotiated.pruned()) {
+                // Nothing was skipped, so there is nothing a second attempt
+                // could add. The failure is the answer.
+                throw failed;
+            }
+            // The peer said it held an object and then would not take the push.
+            // The likeliest reason is that it holds that object without holding
+            // everything beneath it, which is a state this optimisation cannot
+            // see and must not guess at. Send the whole closure once, exactly as
+            // the unoptimised path would have, and let the peer decide again.
+            Snapshot complete = lock.reading(() -> snapshot(branch));
+            List<String> wanted = missingOnPeer(remote, complete.closure());
+            return send(remote, token, branch, complete.tip(), read(wanted));
+        }
     }
 
-    /** The tip and everything beneath it, as it stands right now. */
+    /**
+     * Finds where the two histories already agree, then walks only what is above
+     * it.
+     *
+     * <p>The unoptimised walk enumerates the branch's entire history and then
+     * asks the peer about all of it. For a repository whose history the peer
+     * already has, that is the whole cost of the push: reading, inflating and
+     * verifying every object locally, then a query for every thirty-two ids, to
+     * be told that the one new commit is the only thing wanted.
+     *
+     * <p>So the peer is asked one question first. It advertises the commits its
+     * branches point at; those are offered back to it, and the ones it confirms
+     * holding become a boundary the local walk stops at. What remains is the part
+     * of the history the peer plausibly lacks, which is then queried and sent as
+     * before.
+     *
+     * <p><strong>Why not negotiate as the walk descends.</strong> That was tried
+     * and is worse: a question per level makes the number of round trips
+     * proportional to the depth of the history, so a first push of a long linear
+     * history would take a request per commit and run out of rounds. Establishing
+     * the boundary up front costs one request and leaves the walk local.
+     *
+     * <p><strong>What this does not assume.</strong> That the peer holding a
+     * commit means it holds that commit's ancestors. It might not, and this walk
+     * would then stop short. Nothing about the safety of the push rests on it
+     * being right: the receiving side walks the proposed tip's closure over its
+     * own disk, inside the same lock in which it moves the reference, and refuses
+     * the move if anything is absent or damaged. A wrong guess costs a refused
+     * push, which {@link #push} answers by sending the whole closure - never a
+     * reference over a hole.
+     */
+    private Negotiated negotiate(Remote remote, String branch) {
+        ObjectId tip = refs.getBranch(branch).orElseThrow(() ->
+                new RemoteException("Branch does not exist: " + branch));
+
+        Set<ObjectId> boundary = agreedBoundary(remote, branch);
+        if (boundary.contains(tip)) {
+            // The peer already holds this exact commit. Nothing to send; the
+            // reference move alone is worth asking for, because the peer may not
+            // have this branch under this name.
+            return new Negotiated(tip, List.of(), true);
+        }
+
+        Set<ObjectId> wanted = new LinkedHashSet<>();
+        Set<ObjectId> seen = new LinkedHashSet<>();
+        Deque<ObjectId> pending = new ArrayDeque<>();
+        pending.push(tip);
+
+        boolean pruned = false;
+        while (!pending.isEmpty()) {
+            ObjectId id = pending.pop();
+            if (boundary.contains(id)) {
+                pruned = true;
+                continue;
+            }
+            if (!seen.add(id)) {
+                continue;
+            }
+            if (seen.size() > TransferLimits.MAX_OBJECTS_PER_TRANSFER) {
+                throw new RemoteException(
+                        "The branch history exceeds " + TransferLimits.MAX_OBJECTS_PER_TRANSFER
+                                + " objects");
+            }
+            wanted.add(id);
+            childrenOf(id).forEach(pending::push);
+        }
+
+        // Still asked, rather than assumed: the boundary narrows what has to be
+        // offered, it does not decide what the peer needs.
+        List<String> needed = missingOnPeer(remote, List.copyOf(wanted));
+        return new Negotiated(
+                tip, needed.stream().map(ObjectId::fromHex).toList(), pruned);
+    }
+
+    /**
+     * The commits the peer says it holds, out of the ones it advertises.
+     *
+     * <p>One request for the advertisement and one to confirm, and the answer is
+     * confirmed rather than taken from the advertisement: a branch naming a
+     * commit is not the same claim as holding it.
+     *
+     * <p>The pushed branch is offered first and the list is capped at a single
+     * request's worth, so a peer with thousands of branches costs the same two
+     * questions as a peer with one. An empty answer is the ordinary first-push
+     * case, and leaves the walk exactly as it was before this optimisation.
+     */
+    private Set<ObjectId> agreedBoundary(Remote remote, String branch) {
+        List<RemoteTransport.RemoteBranch> advertised;
+        try {
+            advertised = transport.advertise(remote);
+        } catch (RemoteException unavailable) {
+            // A peer that will not say what it has is pushed to as if it had
+            // nothing, which is correct and merely slower.
+            return Set.of();
+        }
+        if (advertised == null || advertised.isEmpty()) {
+            return Set.of();
+        }
+
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        advertised.stream()
+                .filter(entry -> branch.equals(entry.branch()))
+                .forEach(entry -> candidates.add(entry.commit()));
+        for (RemoteTransport.RemoteBranch entry : advertised) {
+            if (candidates.size() >= TransferLimits.MAX_IDS_PER_REQUEST) {
+                break;
+            }
+            candidates.add(entry.commit());
+        }
+
+        List<String> offered = List.copyOf(candidates);
+        List<String> absent = transport.missing(remote, offered);
+        if (absent == null) {
+            throw new RemoteException("The remote did not answer which objects it needs");
+        }
+        Set<String> lacking = new java.util.HashSet<>(absent);
+
+        Set<ObjectId> held = new LinkedHashSet<>();
+        for (String id : offered) {
+            if (!lacking.contains(id)) {
+                held.add(ObjectId.fromHex(id));
+            }
+        }
+        return held;
+    }
+
+    /**
+     * What one object needs beneath it.
+     *
+     * <p>The same rule the full walk applies, including its refusal to carry a
+     * tag: branch history is commits, trees and blobs, and an object that should
+     * be impossible here is refused rather than followed.
+     */
+    private List<ObjectId> childrenOf(ObjectId id) {
+        VcsObject object = objects.read(id).orElseThrow(() ->
+                new RemoteException("Local object " + id + " is missing; nothing was sent"));
+
+        return switch (object) {
+            case Commit commit -> {
+                List<ObjectId> children = new ArrayList<>(commit.parents().size() + 1);
+                children.add(commit.tree());
+                children.addAll(commit.parents());
+                yield children;
+            }
+            case Tree tree -> tree.entries().stream().map(TreeEntry::id).toList();
+            case Tag tag -> throw new RemoteException(
+                    "Local object " + tag.id() + " is a tag; tags are not transferred "
+                            + "between repositories, so nothing was sent");
+            case Blob ignored -> List.of();
+        };
+    }
+
+    /**
+     * The tip and everything beneath it, as it stands right now.
+     *
+     * <p>The complete walk, asking nobody anything. Kept because it is what the
+     * fallback needs: when the peer refuses a push the boundary made shorter,
+     * this is the version with nothing assumed.
+     */
     private Snapshot snapshot(String branch) {
         ObjectId tip = refs.getBranch(branch).orElseThrow(() ->
                 new RemoteException("Branch does not exist: " + branch));
@@ -106,28 +285,7 @@ public final class PushService {
                         "The branch history exceeds " + TransferLimits.MAX_OBJECTS_PER_TRANSFER
                                 + " objects");
             }
-            VcsObject object = objects.read(id).orElseThrow(() ->
-                    new RemoteException("Local object " + id + " is missing; nothing was sent"));
-
-            switch (object) {
-                case Commit commit -> {
-                    pending.push(commit.tree());
-                    commit.parents().forEach(pending::push);
-                }
-                case Tree tree -> tree.entries().stream().map(TreeEntry::id).forEach(pending::push);
-
-                // The closure being built is a branch's history, which is commits,
-                // trees and blobs. A tag cannot appear in it, and if one somehow
-                // did it must not be sent: refusing here is what keeps "tags are
-                // not transferred" true of the sending side as well as the
-                // receiving one.
-                case Tag tag -> throw new RemoteException(
-                        "Local object " + tag.id() + " is a tag; tags are not transferred "
-                                + "between repositories, so nothing was sent");
-
-                case Blob ignored -> {
-                }
-            }
+            childrenOf(id).forEach(pending::push);
         }
         return new Snapshot(tip, List.copyOf(closure));
     }
@@ -152,10 +310,13 @@ public final class PushService {
     }
 
     private List<TransferredObject> read(List<String> ids) {
+        return readIds(ids.stream().map(ObjectId::fromHex).toList());
+    }
+
+    private List<TransferredObject> readIds(List<ObjectId> ids) {
         List<TransferredObject> payload = new ArrayList<>(ids.size());
-        for (String id : ids) {
-            ObjectId objectId = ObjectId.fromHex(id);
-            VcsObject object = objects.read(objectId).orElseThrow(() ->
+        for (ObjectId id : ids) {
+            VcsObject object = objects.read(id).orElseThrow(() ->
                     new RemoteException("Local object " + id + " is missing; nothing was sent"));
             payload.add(TransferredObject.of(object));
         }
@@ -200,6 +361,18 @@ public final class PushService {
     }
 
     private record Snapshot(ObjectId tip, List<ObjectId> closure) {
+    }
+
+    /**
+     * The outcome of asking the peer what it needs.
+     *
+     * @param wanted the objects the peer said it lacks, in the order they were
+     *     discovered
+     * @param pruned whether anything was skipped because the peer said it had it;
+     *     false means this walk saw the whole closure and there is no fuller
+     *     attempt to fall back to
+     */
+    private record Negotiated(ObjectId tip, List<ObjectId> wanted, boolean pruned) {
     }
 
     /**
