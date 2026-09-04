@@ -80,11 +80,19 @@ public final class CommitService {
             Signature committer,
             String message) {
 
-        // Shared with other writers, excluded from collection. The whole sequence
-        // below — blobs, trees, commit, then the reference — is unreachable from
-        // any branch until its very last line, so a sweep running inside it would
-        // see live work as garbage.
-        return lock.shared(() -> write(branch, changes, author, committer, message));
+        // One mutation at a time, excluded from collection.
+        //
+        // Serialised because the sequence below reads the branch tip to use as
+        // the parent and only moves the reference at its end. Two commits doing
+        // that concurrently both descend from the same tip, and whichever writes
+        // second replaces the first, whose caller had already been handed an id
+        // and told it succeeded. Holding the lock across the whole sequence,
+        // rather than only its final write, is what closes that window.
+        //
+        // Excluded from collection because everything written below is
+        // unreachable from any branch until that last line, so a sweep running
+        // inside it would see live work as garbage.
+        return lock.mutating(() -> write(branch, changes, author, committer, message));
     }
 
     private ObjectId write(

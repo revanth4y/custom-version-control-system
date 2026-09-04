@@ -106,10 +106,10 @@ public final class ReceiveService {
             }
         }
 
-        // Shared with other writers, excluded from collection - the same exclusion
+        // One mutation at a time, excluded from collection - the same exclusion
         // a commit takes, and for the same reason: everything written below is
         // unreachable until the very last line.
-        return lock.shared(() -> apply(incoming, branch, commit));
+        return lock.mutating(() -> apply(incoming, branch, commit));
     }
 
     private Result apply(List<TransferredObject> incoming, String branch, ObjectId commit) {

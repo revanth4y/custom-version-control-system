@@ -6,6 +6,8 @@ import com.gitforge.vcs.ref.BranchService;
 import com.gitforge.vcs.ref.RefStore;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -96,10 +98,31 @@ public final class BranchDivergence {
         return against(refs.resolveHead().orElse(null));
     }
 
-    /** Every branch measured against {@code base}, which may be null for nothing. */
+    /**
+     * Every branch measured against {@code base}, which may be null for nothing.
+     *
+     * <p>The arithmetic is unchanged - ahead is what the branch reaches and the
+     * base does not, behind is the reverse, related is whether they share
+     * anything at all - but it is no longer arrived at by walking the whole
+     * history once per branch.
+     *
+     * <p>The base ancestry is walked once. Each branch is then walked only
+     * outwards from its tip, stopping wherever it meets that ancestry, which
+     * gives its ahead set directly and records the commits where the two
+     * histories join. Everything the branch and the base share lies below those
+     * join points, so the size of the shared part depends on the join points
+     * alone - and branches sharing join points share the answer, which is why it
+     * is computed once per distinct set of them rather than once per branch. In
+     * the ordinary case, where branches sit on the mainline, that is one
+     * computation for all of them instead of one each.
+     */
     public List<Branch> against(ObjectId base) {
         Optional<String> current = branches.currentBranch();
         Set<ObjectId> baseAncestry = base == null ? Set.of() : graph.ancestorsOf(base);
+
+        // Keyed by the join points, because two branches meeting the base at the
+        // same commits share every commit below them and so share this count.
+        Map<Set<ObjectId>, Integer> sharedByFrontier = new HashMap<>();
 
         List<Branch> result = new ArrayList<>();
         for (String name : branches.listBranches()) {
@@ -110,41 +133,43 @@ public final class BranchDivergence {
                 continue;
             }
 
-            Set<ObjectId> branchAncestry = graph.ancestorsOf(tip.get());
+            Set<ObjectId> frontier = new LinkedHashSet<>();
+            Set<ObjectId> onlyOnBranch = graph.ancestorsOutside(tip.get(), baseAncestry, frontier);
 
-            int ahead = countMissing(branchAncestry, baseAncestry);
-            int behind = countMissing(baseAncestry, branchAncestry);
-            boolean related = shareAnything(branchAncestry, baseAncestry);
+            int shared = sharedByFrontier.computeIfAbsent(
+                    frontier, joins -> countReachable(joins, baseAncestry));
 
             result.add(new Branch(
                     name,
                     tip.get(),
-                    ahead,
-                    behind,
+                    onlyOnBranch.size(),
+                    baseAncestry.size() - shared,
                     current.map(name::equals).orElse(false),
-                    related));
+                    shared > 0));
         }
         return List.copyOf(result);
     }
 
-    private static int countMissing(Set<ObjectId> from, Set<ObjectId> other) {
-        int missing = 0;
-        for (ObjectId id : from) {
-            if (!other.contains(id)) {
-                missing++;
-            }
+    /**
+     * How much of the base ancestry the branch also reaches.
+     *
+     * <p>Everything reachable from the join points, all of which lie inside the
+     * base ancestry, so the walk never leaves it. An empty set of join points
+     * means the histories never meet: nothing is shared, the branch is
+     * unrelated, and it is behind by the whole base ancestry - which is exactly
+     * what the set arithmetic said before.
+     */
+    private int countReachable(Set<ObjectId> joins, Set<ObjectId> withinBase) {
+        if (joins.isEmpty()) {
+            return 0;
         }
-        return missing;
-    }
-
-    private static boolean shareAnything(Set<ObjectId> a, Set<ObjectId> b) {
-        Set<ObjectId> smaller = a.size() <= b.size() ? a : b;
-        Set<ObjectId> larger = smaller == a ? b : a;
-        for (ObjectId id : new LinkedHashSet<>(smaller)) {
-            if (larger.contains(id)) {
-                return true;
-            }
+        Set<ObjectId> reached = new LinkedHashSet<>();
+        for (ObjectId join : joins) {
+            graph.collectAncestors(join, Set.of(), reached);
         }
-        return false;
+        // Defensive rather than expected: the join points are inside the base
+        // ancestry and it is ancestor-closed, so the walk cannot leave it.
+        reached.retainAll(withinBase);
+        return reached.size();
     }
 }

@@ -132,7 +132,7 @@ public final class GarbageCollector {
      * this engine is built for is the cheaper of the two mistakes.
      */
     public GcReport report() {
-        return lock.exclusive(() -> sweep(false));
+        return lock.collecting(() -> sweep(false));
     }
 
     /**
@@ -142,7 +142,7 @@ public final class GarbageCollector {
      * A sweep of a repository with no garbage is a no-op that reports as much.
      */
     public GcReport collect() {
-        return lock.exclusive(() -> sweep(true));
+        return lock.collecting(() -> sweep(true));
     }
 
     /**
