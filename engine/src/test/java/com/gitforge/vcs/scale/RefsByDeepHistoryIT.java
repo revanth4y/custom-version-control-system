@@ -50,8 +50,16 @@ class RefsByDeepHistoryIT {
     /** Deep enough that per-branch traversal dominates per-branch overhead. */
     private static final int HISTORY = 10_000;
 
-    /** Branch counts to measure at. Doubling steps make the slope readable. */
-    private static final int[] BRANCH_STEPS = {1, 5, 10, 20, 40};
+    /**
+     * Branch counts to measure at.
+     *
+     * <p>The first five are the counts the V2.0.16 baseline used, kept so the
+     * before and after are the same measurement rather than two different ones.
+     * The rest are only affordable since divergence stopped replaying the whole
+     * history per reference - at the old cost, 2,000 references against this
+     * history was about two and three quarter hours.
+     */
+    private static final int[] BRANCH_STEPS = {1, 5, 10, 20, 40, 200, 1_000, 2_000};
 
     /** The reference count the suite must reach, measured on the operations that scale with it. */
     private static final int FULL_BRANCHES = 2_000;
@@ -133,16 +141,16 @@ class RefsByDeepHistoryIT {
             assertThat(mid.related()).isTrue();
         }
 
-        // Arithmetic on measured numbers, and named as such. The measured slope
-        // is flat per reference, which is what O(branches x history) predicts.
-        System.out.printf(
-                "    PROJECTED for %d refs at %d ms/ref: %d ms (arithmetic, not measured)%n",
-                FULL_BRANCHES, lastPerBranch, lastPerBranch * FULL_BRANCHES);
+        // No projection any more: the largest step above is the full reference
+        // count, measured. The V2.0.16 baseline could only extrapolate to it,
+        // because reaching it would have taken hours.
+        System.out.printf("    measured to %d refs; V2.0.16 could only project to it%n",
+                BRANCH_STEPS[BRANCH_STEPS.length - 1]);
 
         // ------------------------------------------------------- composition
         System.out.println("  reference composition, history fixed at " + HISTORY + ":");
         int tagsSoFar = 0;
-        for (int extraTags : new int[] {0, 20}) {
+        for (int extraTags : new int[] {0, 20, 480, 1_500}) {
             // Ranges must not overlap: creating tag-0 twice is a duplicate-name
             // refusal, not a measurement.
             ScaleFixtures.tags(fixture, tip[0], "tag-", tagsSoFar, tagsSoFar + extraTags);
@@ -162,13 +170,18 @@ class RefsByDeepHistoryIT {
         // at full scale, so they are measured there rather than projected.
         System.out.println("  at full reference scale:");
         final int measuredBranches = previousBranches;
-        ScaleFixtures.timed(
-                "setup: grow to " + FULL_BRANCHES + " branches",
-                () -> ScaleFixtures.branches(fixture, tip[0], "branch-", measuredBranches, FULL_BRANCHES));
+        if (measuredBranches < FULL_BRANCHES) {
+            ScaleFixtures.timed(
+                    "setup: grow to " + FULL_BRANCHES + " branches",
+                    () -> ScaleFixtures.branches(
+                            fixture, tip[0], "branch-", measuredBranches, FULL_BRANCHES));
+        }
         final int measuredTags = tagsSoFar;
-        ScaleFixtures.timed(
-                "setup: grow to " + FULL_TAGS + " tags",
-                () -> ScaleFixtures.tags(fixture, tip[0], "tag-", measuredTags, FULL_TAGS));
+        if (measuredTags < FULL_TAGS) {
+            ScaleFixtures.timed(
+                    "setup: grow to " + FULL_TAGS + " tags",
+                    () -> ScaleFixtures.tags(fixture, tip[0], "tag-", measuredTags, FULL_TAGS));
+        }
 
         long[] branchCount = new long[1];
         ScaleFixtures.timed("list branches",
