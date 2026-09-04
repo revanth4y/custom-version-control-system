@@ -5,9 +5,14 @@ import com.gitforge.vcs.object.ObjectId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -89,18 +94,12 @@ public final class FileSystemRefStore implements RefStore {
         if (!Files.isDirectory(headsRoot)) {
             return List.of();
         }
-        try (Stream<Path> files = Files.walk(headsRoot)) {
-            return files
-                    .filter(Files::isRegularFile)
-                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
-                    // Nested names are the relative path with forward slashes,
-                    // so feature/login reads the same on every platform.
-                    .map(path -> headsRoot.relativize(path).toString().replace('\\', '/'))
-                    .sorted(Comparator.naturalOrder())
-                    .toList();
-        } catch (IOException ex) {
-            throw new RefException("Could not list branches in " + headsRoot, ex);
-        }
+        return refFilesUnder(headsRoot, "branches").stream()
+                // Nested names are the relative path with forward slashes,
+                // so feature/login reads the same on every platform.
+                .map(path -> headsRoot.relativize(path).toString().replace('\\', '/'))
+                .sorted(Comparator.naturalOrder())
+                .toList();
     }
 
     @Override
@@ -180,17 +179,11 @@ public final class FileSystemRefStore implements RefStore {
         if (!Files.isDirectory(remotesRoot)) {
             return List.of();
         }
-        try (Stream<Path> files = Files.walk(remotesRoot)) {
-            return files
-                    .filter(Files::isRegularFile)
-                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
-                    .map(this::toRemoteRef)
-                    .flatMap(Optional::stream)
-                    .sorted(Comparator.comparing(RemoteRef::qualifiedName))
-                    .toList();
-        } catch (IOException ex) {
-            throw new RefException("Could not list remote refs in " + remotesRoot, ex);
-        }
+        return refFilesUnder(remotesRoot, "remote refs").stream()
+                .map(this::toRemoteRef)
+                .flatMap(Optional::stream)
+                .sorted(Comparator.comparing(RemoteRef::qualifiedName))
+                .toList();
     }
 
     @Override
@@ -246,18 +239,12 @@ public final class FileSystemRefStore implements RefStore {
         if (!Files.isDirectory(tagsRoot)) {
             return List.of();
         }
-        try (Stream<Path> files = Files.walk(tagsRoot)) {
-            return files
-                    .filter(Files::isRegularFile)
-                    .filter(path -> !path.getFileName().toString().startsWith(TEMP_PREFIX))
-                    // Nested names are the relative path with forward slashes, so
-                    // release/v1.0 reads the same on every platform.
-                    .map(path -> tagsRoot.relativize(path).toString().replace('\\', '/'))
-                    .sorted(Comparator.naturalOrder())
-                    .toList();
-        } catch (IOException ex) {
-            throw new RefException("Could not list tags in " + tagsRoot, ex);
-        }
+        return refFilesUnder(tagsRoot, "tags").stream()
+                // Nested names are the relative path with forward slashes, so
+                // release/v1.0 reads the same on every platform.
+                .map(path -> tagsRoot.relativize(path).toString().replace('\\', '/'))
+                .sorted(Comparator.naturalOrder())
+                .toList();
     }
 
     @Override
@@ -307,6 +294,71 @@ public final class FileSystemRefStore implements RefStore {
         } catch (IOException ex) {
             throw new RefException("Could not delete tag " + name, ex);
         }
+    }
+
+    /**
+     * The reference files under one root.
+     *
+     * <p>Listing references means walking a directory that writers are changing
+     * while it is walked. Every reference update writes a temporary file beside
+     * its target and renames it over the top, so an entry can be enumerated and
+     * then be gone before anything can be asked about it. Walking with a stream
+     * and filtering afterwards cannot survive that: the filter that would have
+     * excluded the temporary file never runs, because reading the attributes of
+     * a name that no longer exists throws first. Measured on Linux, four readers
+     * against four writers failed on the first or second listing, every time.
+     *
+     * <p>So the walk takes the attributes the directory scan already read, and
+     * an entry that vanishes mid-walk is skipped. That skip is deliberately
+     * narrow. {@link NoSuchFileException} is the filesystem saying the name is
+     * not there any more, which under concurrent updates is an ordinary thing to
+     * observe and not an error: the reference either was temporary and has been
+     * renamed away, or was deleted, and neither belongs in the answer. Every
+     * other failure — a permission problem, a failing disk — is rethrown, so a
+     * store that genuinely cannot be read still says so instead of quietly
+     * reporting no references.
+     *
+     * <p>The temporary prefix is checked before anything else is asked about the
+     * entry, so the common case costs nothing extra and the file most likely to
+     * disappear is the one least likely to be touched.
+     */
+    private List<Path> refFilesUnder(Path root, String what) {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        List<Path> found = new ArrayList<>();
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                    if (file.getFileName().toString().startsWith(TEMP_PREFIX)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    // The scan already knows; the second question is asked only
+                    // for the entries it does not report as plain files, which
+                    // keeps a symbolic link to a reference visible exactly as it
+                    // was before.
+                    if (!attributes.isRegularFile() && !Files.isRegularFile(file)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    found.add(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException failure)
+                        throws IOException {
+                    if (failure instanceof NoSuchFileException) {
+                        // Renamed away or deleted while the walk was running.
+                        return FileVisitResult.CONTINUE;
+                    }
+                    throw failure;
+                }
+            });
+        } catch (IOException ex) {
+            throw new RefException("Could not list " + what + " in " + root, ex);
+        }
+        return found;
     }
 
     /**
