@@ -68,7 +68,7 @@ public final class FetchService {
             throw new RemoteException("A fetch needs a remote");
         }
         List<RemoteTransport.RemoteBranch> advertised = transport.advertise(remote);
-        return lock.shared(() -> apply(remote, advertised));
+        return lock.mutating(() -> apply(remote, advertised));
     }
 
     private Result apply(Remote remote, List<RemoteTransport.RemoteBranch> advertised) {

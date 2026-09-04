@@ -164,7 +164,27 @@ public final class VcsRepositoryFactory {
      * touched is a few dozen bytes against storage measured in objects, and
      * evicting one while a sweep held it is a bug that would be very hard to see.
      */
+    /**
+     * The lock for one repository.
+     *
+     * <p>Cached per identifier so every view this factory hands out shares one,
+     * and built with the repository's own directory so it also excludes other
+     * processes. Two factories over the same storage still hold two objects —
+     * that is unavoidable, they are separate objects — but they now contend for
+     * the same file lock underneath, which is what makes them safe together.
+     */
+    /**
+     * Where one repository takes its cross-process lock.
+     *
+     * <p>Beside the repositories rather than inside one. The directory name is
+     * not a legal repository id - ids allow only letters, digits, dot, underscore
+     * and hyphen - so it can never collide with a repository somebody creates.
+     */
+    Path lockFileFor(RepositoryId id) {
+        return storageRoot.resolve("~locks").resolve(id.value() + ".lock");
+    }
+
     private RepositoryLock lockFor(RepositoryId id) {
-        return locks.computeIfAbsent(id.value(), key -> new RepositoryLock());
+        return locks.computeIfAbsent(id.value(), key -> new RepositoryLock(lockFileFor(id)));
     }
 }

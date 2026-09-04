@@ -79,7 +79,7 @@ public final class PushService {
 
         // The closure is read under the shared lock, so it cannot be computed
         // against a repository a collection is midway through changing.
-        Snapshot snapshot = lock.shared(() -> snapshot(branch));
+        Snapshot snapshot = lock.reading(() -> snapshot(branch));
 
         List<String> wanted = missingOnPeer(remote, snapshot.closure());
         List<TransferredObject> payload = read(wanted);
