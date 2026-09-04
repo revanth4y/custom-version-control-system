@@ -12,6 +12,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Queue;
@@ -48,6 +50,15 @@ import java.util.stream.StreamSupport;
 public final class CommitGraph {
 
     private final ObjectStore store;
+
+    /**
+     * Parent edges already read, for the life of this graph.
+     *
+     * <p>Concurrent because a graph may be shared by threads reading at the
+     * same time, and because putting the same immutable answer twice is
+     * harmless either way.
+     */
+    private final Map<ObjectId, List<ObjectId>> parents = new ConcurrentHashMap<>();
 
     public CommitGraph(ObjectStore store) {
         if (store == null) {
@@ -226,6 +237,85 @@ public final class CommitGraph {
     }
 
     /**
+     * Ancestors of {@code start} that lie outside {@code boundary}, plus the
+     * boundary commits the walk arrived at.
+     *
+     * <p>The walk stops descending the moment it reaches a commit inside the
+     * boundary. That is not an approximation: {@code boundary} is always an
+     * ancestor-closed set here, so everything below a boundary commit is inside
+     * the boundary too and cannot belong to the answer. Stopping is what turns
+     * "walk the whole history once per reference" into "walk only the part that
+     * is actually different".
+     *
+     * @param boundary an ancestor-closed set to stop at; may be empty, in which
+     *     case this is an ordinary full ancestry walk
+     * @param frontier collects the boundary commits reached, in encounter order;
+     *     these are the points where the two histories join
+     * @return the ancestors of {@code start} not in {@code boundary}, in
+     *     breadth-first order
+     */
+    public Set<ObjectId> ancestorsOutside(
+            ObjectId start, Set<ObjectId> boundary, Set<ObjectId> frontier) {
+        requireId(start);
+
+        Set<ObjectId> outside = new LinkedHashSet<>();
+        Set<ObjectId> seen = new HashSet<>();
+        Queue<ObjectId> queue = new ArrayDeque<>();
+        queue.add(start);
+        seen.add(start);
+
+        while (!queue.isEmpty()) {
+            ObjectId id = queue.remove();
+            if (boundary.contains(id)) {
+                if (frontier != null) {
+                    frontier.add(id);
+                }
+                continue;
+            }
+            outside.add(id);
+            for (ObjectId parent : parentsOf(id)) {
+                if (seen.add(parent)) {
+                    queue.add(parent);
+                }
+            }
+        }
+        return outside;
+    }
+
+    /**
+     * Adds every ancestor of {@code start} to {@code into}, skipping anything
+     * already there or inside {@code boundary}.
+     *
+     * <p>For building the union of many references' histories without replaying
+     * the shared part once per reference. Both sets are ancestor-closed while
+     * this runs, so declining to descend past a commit in either of them cannot
+     * miss anything, and the result is the same set the naive union produces —
+     * in the same order, because sources are still visited one after another
+     * rather than interleaved.
+     */
+    public void collectAncestors(ObjectId start, Set<ObjectId> boundary, Set<ObjectId> into) {
+        requireId(start);
+
+        Set<ObjectId> seen = new HashSet<>();
+        Queue<ObjectId> queue = new ArrayDeque<>();
+        queue.add(start);
+        seen.add(start);
+
+        while (!queue.isEmpty()) {
+            ObjectId id = queue.remove();
+            if (into.contains(id) || boundary.contains(id)) {
+                continue;
+            }
+            into.add(id);
+            for (ObjectId parent : parentsOf(id)) {
+                if (seen.add(parent)) {
+                    queue.add(parent);
+                }
+            }
+        }
+    }
+
+    /**
      * The lowest common ancestors of two commits.
      *
      * <p>A commit is a common ancestor when it is reachable from both. The
@@ -278,9 +368,30 @@ public final class CommitGraph {
      * Reads a commit, failing loudly if history references something that is not
      * present or is not a commit.
      */
+    /**
+     * The parents of one commit, remembered after the first read.
+     *
+     * <p>Safe to remember for as long as this graph lives, and safe for a
+     * reason stronger than careful invalidation: an object id is the hash of
+     * the object, so the parents of a given id cannot change. A mutation adds
+     * commits with new ids; it never gives an existing id different parents.
+     * There is therefore no stale entry to invalidate, and no mutation this
+     * cache can survive incorrectly.
+     *
+     * <p>What is remembered is the edge, not the object. Every commit still
+     * arrives through {@link ObjectStore#readCommit}, which verifies the bytes
+     * against the id before returning them; the memo only stops the same
+     * verified answer being recomputed on the walk after this one.
+     */
     private List<ObjectId> parentsOf(ObjectId id) {
+        List<ObjectId> known = parents.get(id);
+        if (known != null) {
+            return known;
+        }
         Commit commit = store.readCommit(id);
-        return commit.parents();
+        List<ObjectId> resolved = commit.parents();
+        parents.put(id, resolved);
+        return resolved;
     }
 
     private static void requireId(ObjectId id) {
