@@ -179,9 +179,44 @@ class ConcurrencyIT {
             report("readers", READERS, "reads", reads.get(), "duration", millis, readerFailures);
             ScaleFixtures.note("commits attempted", WRITERS * WRITES_EACH);
             ScaleFixtures.note("commits written", commits.get());
-            ScaleFixtures.note("writer failures (measured, not asserted)", writerFailures.size());
+            ScaleFixtures.note("writer failures", writerFailures.size());
             writerFailures.stream().limit(2).forEach(f ->
                     System.out.println("    writer failure: " + f));
+
+            // Not asserted here, and the reason matters.
+            //
+            // Serialising mutations fixed writer-against-writer: the collection
+            // case below runs the same eight writers over the same branch with
+            // no readers and now completes all two hundred commits without a
+            // single failure. Add concurrent readers and, on Windows, most
+            // writers fail with "Could not write refs/heads/main" - because a
+            // reference is replaced by renaming a temporary file over it, and
+            // Windows refuses that rename while any reader has the target open.
+            // POSIX allows it, which is why the same code is quiet on Linux.
+            //
+            // That is a property of the reference store on one platform, not of
+            // the lock, and it long predates this change. Asserting zero writer
+            // failures here would either fail on Windows for a reason this
+            // window is not chartered to fix, or tempt someone to weaken the
+            // reference store to make a test quiet. So it is measured, printed,
+            // and recorded as a separate finding.
+            ScaleFixtures.note("writers that completed every commit",
+                    commits.get() == WRITERS * WRITES_EACH ? WRITERS : "not all");
+            if (!writerFailures.isEmpty()) {
+                System.out.println("  FINDING: " + writerFailures.size() + " writer(s) could not replace"
+                        + " the branch reference while readers held it open.");
+                System.out.println("           Platform behaviour of the reference store, not the lock:"
+                        + " the same writers with");
+                System.out.println("           no readers complete every commit. Separate from P0;"
+                        + " see the V2.0.17 tracking issue.");
+            }
+
+            // What is asserted is that nothing was lost or corrupted. A commit
+            // either fails outright or lands and stays reachable; there is no
+            // third outcome in which a caller is told yes and the work vanishes.
+            assertThat(commits.get())
+                    .as("some commits got through, so the case exercised what it claims to")
+                    .isPositive();
         } finally {
             pool.shutdownNow();
         }
@@ -192,6 +227,9 @@ class ConcurrencyIT {
         // to one branch are exactly what this fixture exists to characterise.
         assertThat(readerFailures).as("no reader saw a reference without its object").isEmpty();
         ObjectId head = fixture.repository().refs().resolveHead().orElseThrow();
+        assertThat(fixture.repository().objects().contains(head))
+                .as("the branch the writers were racing on still names a stored commit")
+                .isTrue();
         assertThat(fixture.repository().objects().read(head))
                 .as("the final HEAD resolves to a stored object")
                 .isPresent();
@@ -311,13 +349,18 @@ class ConcurrencyIT {
 
         ScaleFixtures.note("acknowledged commits", mustSurvive.size());
         ScaleFixtures.note("reachable objects collected", 0);
-        ScaleFixtures.note("LOST UPDATES (acknowledged, orphaned, swept)", orphaned);
-        if (orphaned > 0) {
-            System.out.println("  FINDING: " + orphaned + " commit(s) returned successfully to a caller"
-                    + " and are no longer reachable.");
-            System.out.println("           Concurrent commits to one branch are last-writer-wins;"
-                    + " see the V2.0.17 tracking issue, item P0.");
-        }
+        ScaleFixtures.note("lost updates", orphaned);
+
+        // The property the P0 fix exists to provide, and the one that failed
+        // before it: a commit the engine acknowledged is still reachable
+        // afterwards. Four of fifty were not, because a concurrent commit had
+        // replaced the reference and a later sweep then reclaimed the orphan.
+        assertThat(orphaned)
+                .as("no acknowledged commit is orphaned by a concurrent writer")
+                .isZero();
+        assertThat(mustSurvive)
+                .as("every writer got through once mutations are serialised")
+                .hasSize(WRITERS * WRITES_EACH);
     }
 
     @Test
@@ -359,17 +402,15 @@ class ConcurrencyIT {
         ScaleFixtures.note("refused", refused.get());
         ScaleFixtures.note("creations silently superseded", Math.max(succeeded.get() - 1, 0));
 
-        // Asserted: the store is left consistent and the surviving reference
-        // names one of the commits a caller actually asked for.
-        //
-        // NOT asserted: that exactly one creation is accepted. `createBranch`
-        // checks for the name and then writes, and `RepositoryLock.shared` takes
-        // the *read* lock — writers are excluded from collection, not from each
-        // other — so the check and the write are not one atomic step. How many
-        // callers are told "created" is the measurement, reported above.
+        // Now a guarantee rather than a measurement. The check that the name is
+        // free and the write that claims it happen inside one mutation, so only
+        // one caller can be told it created the branch. Before serialisation
+        // three to six of eight were told so, and all but one were wrong.
         assertThat(unexpected).as("no unexpected failure kind").isEmpty();
-        assertThat(succeeded.get()).as("at least one creation is accepted").isGreaterThanOrEqualTo(1);
         assertThat(succeeded.get() + refused.get()).as("every thread got an answer").isEqualTo(WRITERS);
+        assertThat(succeeded.get()).as("exactly one creation is accepted").isEqualTo(1);
+        assertThat(refused.get()).as("every other caller is refused, not misinformed")
+                .isEqualTo(WRITERS - 1);
         ObjectId landed = fixture.repository().refs().getBranch("contested")
                 .orElseThrow(() -> new AssertionError("the contested branch does not exist"));
         assertThat(candidates)
@@ -411,6 +452,17 @@ class ConcurrencyIT {
         ScaleFixtures.note("second view is the same repository", first.id().equals(second.id()));
         ScaleFixtures.note("the two views share a lock instance", sameLock);
 
+        // Structural, and true on every run regardless of scheduling: the two
+        // views are separate objects with separate in-memory locks. What makes
+        // them safe together is the file lock underneath, which the separate
+        // process below actually exercises.
+        assertThat(sameLock)
+                .as("two factories over one directory hold different lock objects")
+                .isFalse();
+        assertThat(first.lock().guardsOtherProcesses())
+                .as("a repository opened through the factory locks across processes")
+                .isTrue();
+
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         AtomicInteger created = new AtomicInteger();
 
@@ -425,23 +477,136 @@ class ConcurrencyIT {
                 }));
 
         List<String> branches = fixture.repository().refs().listBranches();
-        int expected = WRITERS * WRITES_EACH + 1;
-        int missing = expected - branches.size();
-
         report("views", 2, "operations", created.get(), "duration", millis, failures);
-        ScaleFixtures.note("branches expected", expected);
+        ScaleFixtures.note("branches expected", WRITERS * WRITES_EACH + 1);
         ScaleFixtures.note("branches present", branches.size());
-        ScaleFixtures.note("branches missing on this run", missing);
-        ScaleFixtures.note("failures raised", failures.size());
-        System.out.println("  NOTE: this run's outcome is evidence, not a guarantee. Two views hold");
-        System.out.println("        separate locks, so ordering is unconstrained and a different run");
-        System.out.println("        may differ. See the V2.0.17 tracking issue, item P0.");
 
-        // The structural fact is what is asserted, because it is true on every
-        // run regardless of scheduling: the locks are not shared.
-        assertThat(sameLock)
-                .as("two factories over one directory do not share a repository lock")
-                .isFalse();
+        assertThat(failures).as("no writer failed across the two views").isEmpty();
+        assertThat(branches)
+                .as("every branch created through either view is present")
+                .hasSize(WRITERS * WRITES_EACH + 1);
+    }
+
+    /**
+     * The claim that only a second process can test.
+     *
+     * <p>Two factories inside one JVM show that the in-memory locks are not
+     * shared, but they cannot show whether the file lock excludes anything: both
+     * would be asking the operating system for a lock this process already
+     * holds. So this starts a real second JVM against the same repository and
+     * has both sides commit to one branch at the same time.
+     *
+     * <p>Every id either side prints was acknowledged to a caller, so every one
+     * of them must still be reachable at the end. Without the file lock the two
+     * processes each read the tip and each move the reference, and the losing
+     * commit is orphaned exactly as it was inside one JVM.
+     */
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.MINUTES)
+    @DisplayName("K: a second process cannot orphan this one's commits")
+    void separateProcessCannotLoseCommits(@TempDir Path parent) throws Exception {
+        System.out.println("\n=== K: two operating-system processes, one repository ===");
+        ScaleFixtures.Fixture fixture = ScaleFixtures.repository(parent, "crossprocess", "main");
+        ScaleFixtures.linearHistory(fixture, "main", 10);
+
+        String classpath = System.getProperty("java.class.path");
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        int perSide = 40;
+
+        // A test starting a JVM, with a fixed argument list and no shell
+        // anywhere in it. The prohibition this project keeps is on the CLI
+        // shelling out at run time, not on a test spawning a process.
+        ProcessBuilder builder = new ProcessBuilder(
+                java.toString(), "-cp", classpath,
+                CommittingProcess.class.getName(),
+                fixture.root().toString(), "repository",
+                String.valueOf(perSide), "child");
+        builder.redirectErrorStream(false);
+
+        List<String> childCommits = new CopyOnWriteArrayList<>();
+        List<String> childErrors = new CopyOnWriteArrayList<>();
+        List<ObjectId> parentCommits = new CopyOnWriteArrayList<>();
+
+        ScaleFixtures.resetPeakHeap();
+        long started = System.nanoTime();
+        Process child = builder.start();
+        Thread drainOut = new Thread(() -> read(child.getInputStream(), childCommits));
+        Thread drainErr = new Thread(() -> read(child.getErrorStream(), childErrors));
+        drainOut.start();
+        drainErr.start();
+
+        Throwable parentFailure = null;
+        try {
+            for (int i = 0; i < perSide; i++) {
+                parentCommits.add(fixture.repository().commits().commit(
+                        "main",
+                        List.of(new FileChange.Put(
+                                "parent.txt",
+                                ("parent round " + i + "\n").getBytes(StandardCharsets.UTF_8),
+                                FileMode.REGULAR_FILE)),
+                        ScaleFixtures.AUTHOR,
+                        "Parent commit " + i));
+            }
+        } catch (RuntimeException failure) {
+            parentFailure = failure;
+        }
+
+        boolean finished = child.waitFor(8, TimeUnit.MINUTES);
+        drainOut.join(TimeUnit.MINUTES.toMillis(1));
+        drainErr.join(TimeUnit.MINUTES.toMillis(1));
+        long millis = (System.nanoTime() - started) / 1_000_000;
+        if (!finished) {
+            child.destroyForcibly();
+        }
+
+        System.out.printf("  %-52s %9d ms   peak heap %5d MB%n",
+                "two processes x " + perSide + " commits each", millis, ScaleFixtures.peakHeapMb());
+        ScaleFixtures.note("child exited", finished ? child.exitValue() : "TIMED OUT");
+        ScaleFixtures.note("commits acknowledged to the parent", parentCommits.size());
+        ScaleFixtures.note("commits acknowledged to the child", childCommits.size());
+        childErrors.stream().limit(3).forEach(line -> System.out.println("    child stderr: " + line));
+
+        assertThat(finished).as("the second process finished inside the bound").isTrue();
+        assertThat(parentFailure).as("the commits of this process were not refused").isNull();
+        assertThat(child.exitValue()).as("the second process succeeded").isZero();
+        assertThat(childCommits).as("the second process committed").hasSize(perSide);
+        assertThat(parentCommits).as("this process committed").hasSize(perSide);
+
+        // Everything both sides were told succeeded must still be reachable.
+        Set<ObjectId> reachable = new java.util.HashSet<>();
+        CommitGraph graph = new CommitGraph(fixture.repository().objects());
+        fixture.repository().refs().getBranch("main")
+                .ifPresent(tip -> reachable.addAll(graph.bfs(tip)));
+
+        int lost = 0;
+        for (ObjectId id : parentCommits) {
+            if (!reachable.contains(id)) {
+                lost++;
+            }
+        }
+        for (String hex : childCommits) {
+            if (!reachable.contains(ObjectId.fromHex(hex))) {
+                lost++;
+            }
+        }
+        ScaleFixtures.note("objects reachable from main", reachable.size());
+        ScaleFixtures.note("lost updates across processes", lost);
+
+        assertThat(lost)
+                .as("no commit acknowledged by either process is orphaned by the other")
+                .isZero();
+    }
+
+    private static void read(java.io.InputStream stream, List<String> into) {
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                into.add(line.trim());
+            }
+        } catch (IOException ignored) {
+            // The process ended; whatever was read is what there was.
+        }
     }
 
     // ------------------------------------------------------------- plumbing
