@@ -2,6 +2,7 @@ package com.gitforge.cli.output;
 
 import com.gitforge.cli.options.GlobalOptions;
 import com.gitforge.cli.security.Redactor;
+import com.gitforge.cli.security.TerminalText;
 
 import java.io.PrintStream;
 import java.util.List;
@@ -17,6 +18,9 @@ import java.util.Map;
  * <ul>
  *   <li>redaction runs on every stream, so a token cannot escape through a
  *       command that did not know it was carrying one;
+ *   <li>and so does {@link TerminalText}, so a repository name or a commit
+ *       message cannot erase the line describing it and write a different one —
+ *       nearly everything printed here was written by somebody else;
  *   <li>{@code --json} is honoured by every command, because the choice of
  *       renderer is made here and not by the command;
  *   <li>{@code --quiet} means the same thing everywhere: the identifier a script
@@ -26,6 +30,13 @@ import java.util.Map;
  * <p>Colour is off unless the stream is a terminal. A pipe receiving escape
  * codes is a pipe whose consumer has to strip them, and the consumer is usually
  * a regular expression that gets it slightly wrong.
+ *
+ * <p><strong>The label and the message are kept apart on the way out.</strong>
+ * The CLI's own colouring is escape sequences, and it is the one thing here
+ * allowed to be: it is built from constants and never from anything a server
+ * said. So {@link #print} neutralises the message and then puts the label in
+ * front of it, rather than neutralising the two together — which would have
+ * stripped the colour along with the attack, and been noticed and undone.
  */
 public final class Output {
 
@@ -85,7 +96,7 @@ public final class Output {
             print(err, Json.pretty(Envelope.error(command, code, message).fields()));
             return;
         }
-        print(err, paint("error", "31") + ": " + message);
+        print(err, paint("error", "31") + ": ", message);
     }
 
     /** A line of ordinary output. */
@@ -98,14 +109,14 @@ public final class Output {
     /** A non-fatal note. Suppressed by {@code --quiet}, since it is not the answer. */
     public void warn(String text) {
         if (!options.quiet() && !options.json()) {
-            print(err, paint("warning", "33") + ": " + text);
+            print(err, paint("warning", "33") + ": ", text);
         }
     }
 
     /** Tracing, shown only under {@code --verbose}. Redacted like everything else. */
     public void trace(String text) {
         if (options.verbose() && !options.json()) {
-            print(err, paint("trace", "90") + ": " + text);
+            print(err, paint("trace", "90") + ": ", text);
         }
     }
 
@@ -132,7 +143,20 @@ public final class Output {
     }
 
     private void print(PrintStream stream, String text) {
-        stream.println(redactor.scrub(text));
+        print(stream, "", text);
+    }
+
+    /**
+     * The only way anything reaches a stream.
+     *
+     * <p>{@code label} is the CLI's own, already coloured and trusted. {@code text}
+     * is not: it is a commit message, a repository description, an issue body, or
+     * a sentence a server chose. Redaction runs first so its patterns see the text
+     * as it was written, and neutralisation second so whatever redaction leaves
+     * behind still cannot move the cursor.
+     */
+    private void print(PrintStream stream, String label, String text) {
+        stream.println(label + TerminalText.neutralise(redactor.scrub(text)));
     }
 
     private String paint(String text, String code) {

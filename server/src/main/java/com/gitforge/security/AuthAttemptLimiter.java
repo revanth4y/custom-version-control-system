@@ -1,5 +1,7 @@
 package com.gitforge.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -26,9 +28,25 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>The table is bounded. An unbounded map keyed by remote address is itself a
  * way to exhaust the server's memory, so entries expire and the table is capped;
  * see {@link #evictIfOverCapacity()} for what happens when it fills.
+ *
+ * <p><strong>Blocking used to be silent.</strong> Someone working through a
+ * password list would be refused and nobody would ever know it had happened -
+ * the defence worked and left no trace, which is the half of a defence that is
+ * missing. One line is written when an address first crosses the threshold, and
+ * that is all: not every failure, which would let an attacker choose how much
+ * this server writes to disk, but the single moment the answer changes from no
+ * to not-for-a-while. At most one line per address per window, so the volume is
+ * bounded by the same table that bounds the memory.
+ *
+ * <p>Nothing attacker-controlled goes into it. The address comes from the
+ * connection rather than from a header, so it cannot carry a newline and forge a
+ * second log entry, and no email, username or password is named - the point is
+ * that an address is guessing, not what it guessed.
  */
 @Component
 public class AuthAttemptLimiter {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthAttemptLimiter.class);
 
     /** Long enough to make guessing pointless, short enough to forgive a bad afternoon. */
     public static final Duration WINDOW = Duration.ofMinutes(15);
@@ -89,12 +107,20 @@ public class AuthAttemptLimiter {
      */
     public void recordFailure(String address) {
         Instant now = clock.instant();
-        byAddress.compute(address, (key, existing) -> {
+        Attempts updated = byAddress.compute(address, (key, existing) -> {
             if (existing == null || expired(existing)) {
                 return new Attempts(1, now, now);
             }
             return new Attempts(existing.failures() + 1, existing.windowStart(), now);
         });
+        // Exactly on the transition, not at or above it: compute() is atomic, so
+        // only one caller can observe the count becoming MAX_FAILURES, and the
+        // line is written once however many requests arrive together.
+        if (updated != null && updated.failures() == MAX_FAILURES) {
+            log.warn("Authentication attempts from {} are now refused for {} minutes "
+                            + "after {} failures",
+                    address, WINDOW.toMinutes(), MAX_FAILURES);
+        }
         evictIfOverCapacity();
     }
 

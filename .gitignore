@@ -49,3 +49,13 @@ logs/
 # ---- OS ----
 .DS_Store
 Thumbs.db
+
+# ---- Dependency scanning output ----
+# Produced by tools/dependency_scan.py and its inputs. Reports, not sources.
+dependency-scan-report.json
+maven-dependencies.txt
+npm-audit.json
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc

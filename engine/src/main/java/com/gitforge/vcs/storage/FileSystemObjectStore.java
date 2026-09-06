@@ -415,10 +415,36 @@ public final class FileSystemObjectStore implements ObjectStore {
         return out.toByteArray();
     }
 
+    /**
+     * The most an object may weigh once decompressed.
+     *
+     * <p>Sixty-four megabytes: six times the ten this API accepts for a single
+     * file, so no object anything here can legitimately produce comes near it.
+     *
+     * <p>It exists because {@code readAllBytes} had no ceiling, and a deflate
+     * stream's compressed size says nothing about its inflated one - a few
+     * kilobytes of zeroes expand to gigabytes. Nothing reachable through the API
+     * can store such a file, since every write deflates content this server has
+     * already bounded; what can produce one is a tampered or damaged object file
+     * under the storage root. Before this, reading it exhausted the heap and took
+     * down the process, which is a worse answer to a bad file than saying it is a
+     * bad file. Every other kind of damage here already ends in
+     * {@link CorruptObjectException}, and this one now does too.
+     */
+    static final long MAX_INFLATED_BYTES = 64L * 1024 * 1024;
+
     private static byte[] inflate(byte[] compressed, ObjectId id) {
         Inflater inflater = new Inflater();
         try (InputStream stream = new InflaterInputStream(new java.io.ByteArrayInputStream(compressed), inflater)) {
-            return stream.readAllBytes();
+            // Bounded, and one byte past the bound rather than at it, so reaching
+            // the limit exactly is not mistaken for exceeding it.
+            byte[] framed = stream.readNBytes((int) MAX_INFLATED_BYTES + 1);
+            if (framed.length > MAX_INFLATED_BYTES) {
+                throw new CorruptObjectException(
+                        "Object " + id + " decompresses to more than " + MAX_INFLATED_BYTES
+                                + " bytes and was not read");
+            }
+            return framed;
         } catch (ZipException | java.io.EOFException ex) {
             // Truncated or damaged compressed data: the object cannot be trusted.
             throw new CorruptObjectException("Object " + id + " could not be decompressed", ex);

@@ -24,9 +24,17 @@ import java.util.Map;
  *       depend on the machine that produced it;
  *   <li>numbers are written without locale, so a comma decimal separator cannot
  *       appear and turn one field into two;
- *   <li>escaping is explicit, including the control characters below 0x20 that
- *       would otherwise produce invalid JSON.
+ *   <li>escaping is explicit, including every character a terminal would act on
+ *       rather than display.
  * </ul>
+ *
+ * <p>That last rule used to stop at 0x20, which is where <em>invalid JSON</em>
+ * stops. It is not where danger stops. {@code DEL}, the C1 controls - {@code 0x9B}
+ * among them, which starts a sequence all by itself - and the characters that
+ * reverse display order are all valid in a JSON string and all still act on the
+ * terminal that prints one. Escaping them keeps the document identical to a
+ * parser, which reads the escape back as the character it was, and inert to
+ * anything that merely shows it.
  */
 public final class Json {
 
@@ -175,7 +183,10 @@ public final class Json {
                 case '\b' -> out.append("\\b");
                 case '\f' -> out.append("\\f");
                 default -> {
-                    if (c < 0x20) {
+                    // Below 0x20 for validity; the rest for what a terminal does
+                    // with them. TerminalText decides which those are, so the two
+                    // output paths cannot drift apart on the answer.
+                    if (c < 0x20 || com.gitforge.cli.security.TerminalText.isDangerous(c)) {
                         out.append(String.format("\\u%04x", (int) c));
                     } else {
                         out.append(c);

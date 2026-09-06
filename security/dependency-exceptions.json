@@ -1,0 +1,30 @@
+{
+  "$comment": [
+    "Findings that have been assessed and are not being fixed yet, and why.",
+    "",
+    "This is not a suppression list. tools/dependency_scan.py prints every entry",
+    "on every run under 'accepted', so an exception stays visible for as long as",
+    "it exists; what it changes is whether the build fails, not whether anyone is",
+    "told. An entry without a 'review_by' date, or one whose date has passed, is",
+    "reported as EXPIRED and stops excusing anything - so an exception that is",
+    "never revisited turns back into a failure rather than quietly becoming",
+    "permanent.",
+    "",
+    "An entry belongs here only when the finding has been traced to actual code",
+    "and the fix has a cost worth naming. 'We do not think it applies' is not a",
+    "reason; 'this is the call site, and here is why it cannot be reached' is.",
+    "Where a patch release fixes it, the patch release is taken instead - see the",
+    "version overrides in pom.xml."
+  ],
+  "accepted": [
+    {
+      "id": "GHSA-wrjc-x8rr-h8h6",
+      "package": "react-router / react-router-dom",
+      "ecosystem": "npm",
+      "severity": "MODERATE",
+      "because": "Open redirect via a backslash in <Link> and useNavigate. It requires the application to route to a target it did not construct, and this one never does: there is no next/redirect/returnTo parameter anywhere in the frontend, and every dynamic destination is built by a helper that emits a rooted internal path with encodeURIComponent on each variable segment. The advisory's other half, arbitrary constructor injection through deserializeErrors(), is in the server-side rendering hydration path, and this frontend is a static bundle with no SSR at all. The only published fix is react-router-dom 7.18.3, a major version whose routing API differs from the 6.x this application is written against - that is a frontend migration, not a dependency bump, and doing it inside a security window would mean changing every route to close a path that cannot be reached.",
+      "review_by": "2026-12-06",
+      "review_because": "Revisit when the frontend is next touched, or sooner if a 6.x patch appears. Re-check first whether any redirect-target parameter has been introduced, because that is the assumption this rests on."
+    }
+  ]
+}
