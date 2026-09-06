@@ -132,8 +132,33 @@ jobs:
 
       # The resolved graph, not the declared one. What matters is the version
       # that actually ends up on the classpath, which only Maven knows.
-      - name: Resolve Maven dependencies
-        run: ./mvnw -B dependency:list -DoutputFile=$GITHUB_WORKSPACE/maven-dependencies.txt -DappendOutput=true -DincludeScope=runtime
+      #
+      # `package` before `dependency:list`, in one invocation, and both halves of
+      # that are load-bearing.
+      #
+      # `dependency:list` on its own resolves each module's dependencies without
+      # building anything, so `server` and `cli` look for their sibling
+      # `com.gitforge:engine` in Maven Central and do not find it. That is what
+      # this job did on its first run, and it passed locally only because a
+      # developer's ~/.m2 already held the artifact from an earlier build - a
+      # cache making a broken step look correct. Running the two goals in one
+      # invocation means `engine` is built earlier in the same reactor session,
+      # and the sibling artifacts resolve from the reactor rather than from
+      # anywhere they might happen to be lying around.
+      #
+      # `package` and not `compile`: engine publishes a test-jar that `server`
+      # depends on, the `test-jar` goal is bound to `package`, and a classified
+      # artifact cannot be resolved from a module that has not been packaged.
+      # `-DskipTests` and not `-Dmaven.test.skip=true`: the latter skips test
+      # compilation, and the jar plugin then logs "Skipping packaging of the
+      # test-jar" and resolution fails again. Both were measured against a local
+      # repository with the reactor artifacts removed, which is the only way to
+      # tell a working step from a cached one.
+      #
+      # It costs this job a build it did not previously do. `package` installs
+      # nothing, so it leaves the runner's repository as it found it.
+      - name: Build the reactor and resolve Maven dependencies
+        run: ./mvnw -B package -DskipTests dependency:list -DoutputFile=$GITHUB_WORKSPACE/maven-dependencies.txt -DappendOutput=true -DincludeScope=runtime
 
       # Production dependencies only. Vite and Vitest ship nothing: the artifact
       # that is deployed is the static bundle they produce, so a vulnerability in
@@ -143,11 +168,23 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          # audit exits non-zero when it finds something, which is not this
-          # step's decision to make - the scanner below weighs findings against
-          # the accepted list. Only the audit is allowed to fail; a broken
-          # install still fails the job, which is why these are separate lines.
-          npm audit --omit=dev --json > "$GITHUB_WORKSPACE/npm-audit.json" || true
+          # `npm audit` exits non-zero when it finds something. That is a
+          # finding, not a step failure - the scanner below is what weighs
+          # findings against the accepted list, and failing here would mean the
+          # scanner never runs and the accepted list never applies.
+          #
+          # But "it found something" and "it could not run at all" both leave a
+          # non-zero status, and treating the second as the first is how a
+          # dependency gate quietly stops being one. So they are told apart by
+          # the only thing that actually distinguishes them: whether a report was
+          # produced. The status is recorded, and the report is then parsed - an
+          # absent or malformed one fails the job here and now.
+          if npm audit --omit=dev --json > "$GITHUB_WORKSPACE/npm-audit.json"; then
+            echo "npm audit: no production findings"
+          else
+            echo "npm audit: findings present; the scanner decides what they mean"
+          fi
+          python3 -c 'import json,sys; json.load(open(sys.argv[1])); print("npm audit report is well formed")' "$GITHUB_WORKSPACE/npm-audit.json"
 
       - name: Scan for known vulnerabilities
         run: |
@@ -159,10 +196,18 @@ jobs:
 
       # For the record, and not a gate: what the dev-time dependencies look like.
       # Reported so the decision above stays a decision rather than a blind spot.
+      # An `if` rather than a swallowed status, so that "npm audit found things"
+      # and "npm audit could not run" read differently in the log even where
+      # neither is allowed to fail the job.
       - name: Report development-only findings
         if: always()
         working-directory: frontend
-        run: npm audit || true
+        run: |
+          if npm audit; then
+            echo "no development-only findings"
+          else
+            echo "development-only findings above; not a gate, see the comment on the step before"
+          fi
 
       # Uploaded whether the scan passed or failed - the report is most wanted
       # when the job is red.
