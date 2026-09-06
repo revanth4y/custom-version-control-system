@@ -47,6 +47,9 @@ import java.util.concurrent.TimeoutException;
  */
 public final class Cli {
 
+    /** What {@link #version()} answers when the binary carries no version. */
+    static final String UNKNOWN_VERSION = "unknown";
+
     private final PrintStream out;
     private final PrintStream err;
     private final Map<String, String> environment;
@@ -234,9 +237,23 @@ public final class Cli {
         stream.println(text);
     }
 
-    /** The version this binary was built from. */
+    /**
+     * The version this binary was built from.
+     *
+     * <p>Read from the jar manifest, which the build fills in from the project
+     * version, so there is one source for it and a release cannot leave it
+     * behind.
+     *
+     * <p>What is returned when there is no manifest is deliberately not a
+     * version. Running from loose classes - a test, an IDE - has no build to ask,
+     * and the previous answer was a hard-coded release number that stopped being
+     * true the moment the project moved on: the shipped jar had no
+     * Implementation-Version either, so every user saw that stale literal rather
+     * than the release they were running. Saying the version is unknown is
+     * correct in the only case that reaches it, and cannot quietly go stale.
+     */
     public static String version() {
         String implementation = Cli.class.getPackage().getImplementationVersion();
-        return implementation == null ? "2.0.15" : implementation;
+        return implementation == null || implementation.isBlank() ? UNKNOWN_VERSION : implementation;
     }
 }

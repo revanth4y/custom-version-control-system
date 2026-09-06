@@ -73,6 +73,13 @@
 					<archive>
 						<manifest>
 							<mainClass>com.gitforge.cli.Main</mainClass>
+							<!--
+							  Writes Implementation-Version from the project version.
+							  Without it the assembled jar carries no version at all,
+							  and the CLI falls back to a literal - which is how the
+							  shipped binary came to report a release two behind.
+							-->
+							<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
 						</manifest>
 					</archive>
 				</configuration>
