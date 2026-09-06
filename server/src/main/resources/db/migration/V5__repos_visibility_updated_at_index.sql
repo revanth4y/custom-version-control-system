@@ -1,0 +1,42 @@
+-- The public repository listing, which had no index behind it at all.
+--
+-- GET /api/v1/repositories asks for one page of public repositories, newest
+-- activity first:
+--
+--     WHERE visibility = ? ORDER BY updated_at DESC  LIMIT ? OFFSET ?
+--
+-- With nothing to order by, PostgreSQL read every row in the table and sorted
+-- the survivors to return twenty of them. Measured on fifty thousand
+-- repositories that was a sequential scan of 610 pages and a top-N sort of
+-- 35,000 rows, on every request, for a page the caller sees twenty rows of.
+-- The cost was set by the size of the table rather than the size of the page,
+-- so it grew with the install and never with the work asked for.
+--
+-- Both columns are here because both are in the query, and the second one is
+-- what makes the index hold up. An index on updated_at alone can order the
+-- rows but not select them, so the scan reads down the whole table in date
+-- order discarding private repositories until it has found twenty public ones.
+-- That is fine while most repositories are public and bad exactly when they
+-- are not: on a store that is 1% public it read 3,372 rows to return 20, and
+-- the more private an install becomes the further it reads. With visibility
+-- leading, the same query touched 22 pages and read no row it did not return.
+--
+-- DESC matches the direction the listing asks for. A btree can be walked
+-- backwards, so this is not required for correctness; it is written the way it
+-- is read, as ix_releases_repo already is.
+--
+-- Deliberately not covering. Spring Data issues a count(id) alongside every
+-- page, and adding id to the index so that count could be answered from the
+-- index alone was measured and made no difference to the plan - PostgreSQL
+-- kept the sequential scan - while making the index 58% larger. That count
+-- remains a full scan of the public rows, and remains the dominant cost of the
+-- endpoint. It is a query shape to change, not an index to widen, and it is
+-- left alone here.
+--
+-- Built without CONCURRENTLY: Flyway runs each migration in a transaction, and
+-- CREATE INDEX CONCURRENTLY cannot. This takes a SHARE lock that blocks writes
+-- to repos while it builds - 49 ms for fifty thousand rows on the machine this
+-- was measured on. Adding an index is not destructive and changes no row, no
+-- value, and no query result: only how the rows are found.
+
+CREATE INDEX ix_repos_visibility_updated ON repos (visibility, updated_at DESC);

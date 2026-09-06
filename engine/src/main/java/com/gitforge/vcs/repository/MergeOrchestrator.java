@@ -83,7 +83,7 @@ public final class MergeOrchestrator {
         // A merge writes blobs, trees and a commit before it moves the branch,
         // exactly as an ordinary commit does, so it needs the same exclusion from
         // collection for the same reason.
-        return lock.shared(() -> apply(ourBranch, theirBranch, author, committer, message));
+        return lock.mutating(() -> apply(ourBranch, theirBranch, author, committer, message));
     }
 
     private MergeOutcome apply(

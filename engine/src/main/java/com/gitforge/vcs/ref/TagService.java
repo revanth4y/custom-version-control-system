@@ -80,7 +80,7 @@ public final class TagService {
      */
     public void createLightweight(String name, ObjectId target) {
         TagName.validate(name);
-        lock.shared(() -> {
+        lock.mutating(() -> {
             requireExistingObject(target);
             refStore.createTag(name, target);
         });
@@ -106,7 +106,7 @@ public final class TagService {
             throw new RefException("An annotated tag needs a message");
         }
 
-        return lock.shared(() -> {
+        return lock.mutating(() -> {
             VcsObject targetObject = requireExistingObject(target);
 
             // Refused before the object is written rather than after, so a rejected

@@ -58,11 +58,15 @@ public final class BranchService {
      *     target is not a commit in this repository
      */
     public void createBranch(String name, ObjectId startCommit) {
-        // Shared with other writers, excluded from collection. A branch may be
-        // created at a commit no other reference reaches — resurrecting a deleted
-        // branch by id does exactly that — so this can turn an object a sweep was
-        // about to collect into one it must keep.
-        lock.shared(() -> {
+        // One mutation at a time, excluded from collection. Serialised because
+        // the check that the name is free and the write that claims it are one
+        // decision: two callers passing the check together would both write, and
+        // the loser would be told it had created a branch it had not.
+        //
+        // Excluded from collection because a branch may be created at a commit no
+        // other reference reaches, which turns an object a sweep was about to
+        // collect into one it must keep.
+        lock.mutating(() -> {
             requireExistingCommit(startCommit);
             refStore.createBranch(name, startCommit);
         });
@@ -99,7 +103,7 @@ public final class BranchService {
     public void updateBranch(String name, ObjectId commit) {
         // Excluded from collection for the same reason as createBranch: the target
         // need not have been reachable before.
-        lock.shared(() -> {
+        lock.mutating(() -> {
             requireExistingCommit(commit);
             refStore.updateBranch(name, commit);
         });

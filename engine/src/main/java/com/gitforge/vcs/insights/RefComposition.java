@@ -91,22 +91,35 @@ public final class RefComposition {
      * rather than by care.
      */
     public Set<ObjectId> commitsOnlyTagsProtect() {
+        // Each reference is still visited in the same order as before, and each
+        // still contributes its ancestors in breadth-first order. What changed
+        // is that a walk no longer replays the part of history an earlier
+        // reference already accounted for: it stops as soon as it reaches
+        // something the accumulating set holds. Both sets stay ancestor-closed
+        // while this runs, so stopping cannot miss a commit, and a commit that
+        // would have been added and then skipped as a duplicate is simply never
+        // reached twice. Same set, same order, one traversal of the graph
+        // instead of one per reference.
         Set<ObjectId> withoutTags = new LinkedHashSet<>();
 
         for (String branch : refs.listBranches()) {
-            refs.getBranch(branch).ifPresent(tip -> withoutTags.addAll(graph.bfs(tip)));
+            refs.getBranch(branch)
+                    .ifPresent(tip -> graph.collectAncestors(tip, Set.of(), withoutTags));
         }
-        refs.resolveHead().ifPresent(tip -> withoutTags.addAll(graph.bfs(tip)));
-        refs.listRemoteRefs().forEach(ref -> withoutTags.addAll(graph.bfs(ref.commit())));
+        refs.resolveHead().ifPresent(tip -> graph.collectAncestors(tip, Set.of(), withoutTags));
+        refs.listRemoteRefs()
+                .forEach(ref -> graph.collectAncestors(ref.commit(), Set.of(), withoutTags));
 
+        // Tags are walked against that set as a boundary rather than subtracting
+        // it afterwards. Anything inside it is destined for removal, and so is
+        // everything beneath it, so descending there could only produce commits
+        // that the final difference discards.
         Set<ObjectId> fromTags = new LinkedHashSet<>();
         for (String tag : refs.listTags()) {
             refs.getTag(tag)
                     .flatMap(this::peelToCommit)
-                    .ifPresent(commit -> fromTags.addAll(graph.bfs(commit)));
+                    .ifPresent(commit -> graph.collectAncestors(commit, withoutTags, fromTags));
         }
-
-        fromTags.removeAll(withoutTags);
         return fromTags;
     }
 
