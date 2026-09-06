@@ -122,7 +122,7 @@ public final class SandboxPath {
             throw CliException.sandbox("Path escapes the sandbox: " + candidate);
         }
 
-        Path real = realOf(nearestExisting(resolved));
+        Path real = eventualTarget(resolved, candidate);
         if (!startsWithin(real, realRoot)) {
             throw CliException.sandbox("Path escapes the sandbox through a link: " + candidate);
         }
@@ -140,25 +140,121 @@ public final class SandboxPath {
     }
 
     /**
-     * Walks up to the closest ancestor that exists.
+     * How many links to follow before giving up.
      *
-     * <p>{@code toRealPath} cannot resolve what is not there, and a path being
-     * created legitimately does not exist yet. Its nearest existing parent is
-     * what determines where it would land, so that is what is checked.
+     * <p>Links can point at links, and they can point at each other. A cycle
+     * cannot be resolved at all, and the answer to a path whose destination
+     * cannot be determined is a refusal, not an acceptance.
      */
-    private Path nearestExisting(Path path) {
-        Path candidate = path;
-        while (candidate != null && !Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
-            candidate = candidate.getParent();
+    private static final int MAX_LINK_HOPS = 40;
+
+    /**
+     * Where a path would actually land, following links even when they dangle.
+     *
+     * <p>This is the check that decides containment, and the previous version of
+     * it could be walked around. It asked {@code toRealPath} for the real path
+     * and, when that failed, fell back to the path as written. Two things then
+     * combined into an escape. A dangling symbolic link <em>exists</em> as far as
+     * {@code NOFOLLOW_LINKS} is concerned, so the search for the nearest existing
+     * ancestor stopped at the link itself; and {@code toRealPath} on a link whose
+     * target is missing throws, so the fallback returned the link's own path -
+     * which is inside the sandbox. A link inside the sandbox pointing at a name
+     * outside it that did not exist yet was therefore accepted, and writing
+     * through the returned path created the file outside. Creating a file is
+     * exactly what a path that does not exist yet is usually for.
+     *
+     * <p>So a link that cannot be resolved is now followed by hand rather than
+     * trusted. The link is read, its target is resolved against the directory the
+     * link sits in, whatever remained of the original path is re-attached, and
+     * the whole thing is asked again. That repeats while links keep appearing,
+     * because a link may point at another link.
+     *
+     * <p>The order matters, and not only for correctness. The closest thing that
+     * actually exists is found first, by walking up; only that is canonicalised,
+     * and whatever was missing below it is re-attached afterwards. Asking
+     * {@code toRealPath} about the whole path first would be simpler to read and
+     * twice as slow in the case that dominates - creating a file, where the leaf
+     * is missing by definition - because the expensive call would be made once to
+     * fail and once to succeed. On a path two hundred directories deep that
+     * showed up immediately as a benchmark timeout.
+     *
+     * <p>What is canonicalised is always a path that exists, so every link above
+     * it is resolved by the filesystem, and an ordinary path, a live link and a
+     * chain of live links all end up where they did before.
+     *
+     * <p><strong>It fails closed.</strong> Every way of not knowing - a cycle, a
+     * link that cannot be read, a link that keeps resolving past the hop limit -
+     * ends in a refusal. Nothing here turns an unanswered question into an
+     * accepted path.
+     *
+     * <p>This closes a deterministic bypass; it does not close the gap between
+     * this check and the caller's open, which no library can. A link swapped in
+     * after the check still would not be seen, as the class comment says.
+     */
+    private Path eventualTarget(Path path, String candidate) {
+        Path current = path;
+        for (int hop = 0; hop < MAX_LINK_HOPS; hop++) {
+            // The closest thing that is actually there. NOFOLLOW, so a link
+            // counts as present even when what it points at is not - which is
+            // the case this whole method exists for.
+            Path existing = current;
+            while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+                existing = existing.getParent();
+            }
+            if (existing == null) {
+                // Not even a root component is there. Nothing can be reached
+                // through it and nothing about it can be confirmed.
+                throw CliException.sandbox(
+                        "Path cannot be resolved on this filesystem: " + candidate);
+            }
+
+            if (Files.isSymbolicLink(existing)) {
+                // Follow it deliberately rather than asking toRealPath, which
+                // cannot answer when the target is missing. A dangling link
+                // still redirects a write to wherever it points.
+                Path remainder = existing.relativize(current);
+                current = readLink(existing, candidate).resolve(remainder).normalize();
+                continue;
+            }
+
+            try {
+                // A real file or directory. Canonicalising it resolves every
+                // link above it, and whatever is missing below hangs off it
+                // unchanged. One canonicalisation, of a path that exists - the
+                // deep-path benchmark is sensitive to doing more than that.
+                Path real = existing.toRealPath();
+                Path remainder = existing.relativize(current);
+                return remainder.toString().isEmpty() ? real : real.resolve(remainder).normalize();
+            } catch (IOException vanished) {
+                // It was there a moment ago. Refuse rather than guess.
+                throw CliException.sandbox(
+                        "Path cannot be resolved on this filesystem: " + candidate);
+            }
         }
-        return candidate == null ? root : candidate;
+        // Too many links, or a cycle among them.
+        throw CliException.sandbox("Path follows too many links: " + candidate);
+    }
+
+    /** The target of a link, resolved against the directory the link sits in. */
+    private static Path readLink(Path link, String candidate) {
+        try {
+            Path target = Files.readSymbolicLink(link);
+            Path parent = link.getParent();
+            return target.isAbsolute() || parent == null
+                    ? target.toAbsolutePath().normalize()
+                    : parent.resolve(target).normalize();
+        } catch (IOException unreadable) {
+            // A link that cannot be read is a destination that cannot be known.
+            throw CliException.sandbox("Path leads through an unreadable link: " + candidate);
+        }
     }
 
     private static Path realOf(Path path) {
         try {
             return path.toRealPath();
         } catch (IOException notThere) {
-            // Nothing to follow, so the normalized form is already the answer.
+            // Only used for the root and the base, which the constructor requires
+            // to exist. Nothing to follow, so the normalized form is the answer.
             return path.toAbsolutePath().normalize();
         }
     }
