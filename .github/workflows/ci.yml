@@ -98,6 +98,82 @@ jobs:
       - name: Maven verify
         run: ./mvnw -B verify
 
+  # Nothing here asked whether anything we depend on has a published advisory
+  # against it, so the only way one would have been noticed is if somebody read
+  # about it. This job asks, on every pull request, and fails when the answer is
+  # yes.
+  #
+  # Its own job rather than a step inside the backend one, for the reason the
+  # comment at the top gives about lint: this answers in under a minute and
+  # should not wait behind a suite that starts PostgreSQL.
+  #
+  # Still no secrets. tools/dependency_scan.py queries the public OSV API, which
+  # needs no key - which is why it is used in preference to a scanner that does,
+  # since a gate that cannot run on a fork is a gate contributors learn to work
+  # around.
+  dependencies:
+    name: Dependencies — known vulnerabilities
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The resolved graph, not the declared one. What matters is the version
+      # that actually ends up on the classpath, which only Maven knows.
+      - name: Resolve Maven dependencies
+        run: ./mvnw -B dependency:list -DoutputFile=$GITHUB_WORKSPACE/maven-dependencies.txt -DappendOutput=true -DincludeScope=runtime
+
+      # Production dependencies only. Vite and Vitest ship nothing: the artifact
+      # that is deployed is the static bundle they produce, so a vulnerability in
+      # a dev server is not a vulnerability in this application. Their findings
+      # are still visible in the unfiltered audit below, which does not gate.
+      - name: Audit npm production dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          # audit exits non-zero when it finds something, which is not this
+          # step's decision to make - the scanner below weighs findings against
+          # the accepted list. Only the audit is allowed to fail; a broken
+          # install still fails the job, which is why these are separate lines.
+          npm audit --omit=dev --json > "$GITHUB_WORKSPACE/npm-audit.json" || true
+
+      - name: Scan for known vulnerabilities
+        run: |
+          python3 tools/dependency_scan.py \
+            --maven-list maven-dependencies.txt \
+            --npm-audit npm-audit.json \
+            --exceptions security/dependency-exceptions.json \
+            --report dependency-scan-report.json
+
+      # For the record, and not a gate: what the dev-time dependencies look like.
+      # Reported so the decision above stays a decision rather than a blind spot.
+      - name: Report development-only findings
+        if: always()
+        working-directory: frontend
+        run: npm audit || true
+
+      # Uploaded whether the scan passed or failed - the report is most wanted
+      # when the job is red.
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-report
+          path: dependency-scan-report.json
+          if-no-files-found: warn
+
   docker:
     name: Docker — compose config and image builds
     runs-on: ubuntu-latest

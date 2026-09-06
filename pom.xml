@@ -47,8 +47,8 @@
 		<jjwt.version>0.12.6</jjwt.version>
 
 		<!--
-		  Four advisories across three managed versions, ahead of the Spring
-		  Boot release that carries the fixes.
+		  Advisories across managed versions, ahead of the Spring Boot release
+		  that carries the fixes.
 
 		  Each is a patch release inside the range this project already manages,
 		  so the override raises a version rather than choosing a different one,
@@ -57,10 +57,44 @@
 		  The two Jackson properties name whole BOMs, not single artifacts:
 		  databind, core and annotations move together, which is the only way
 		  they are supported.
+
+		  These are now found rather than noticed: tools/dependency_scan.py runs
+		  in CI, asks OSV.dev about every resolved artifact, and fails the build
+		  on anything outstanding. Every version below is here because that scan
+		  named it.
 		-->
 
 		<!-- GHSA-j92g-9f8w-j867: channel binding could be dropped without saying so. -->
 		<postgresql.version>42.7.12</postgresql.version>
+
+		<!--
+		  CVE-2026-65182, CVE-2026-68525 and CVE-2026-65905: three critical
+		  advisories against the embedded servlet container, all fixed in
+		  11.0.25.
+
+		  None of the three is reachable as this application is configured. Two
+		  need Tomcat's own DIGEST or FORM authenticators, and GitForge
+		  authenticates in a Spring Security filter with a bearer token; the
+		  third bypasses <security-constraint> elements, and this application
+		  declares none, because authorization lives in the service layer.
+
+		  Bumped anyway, and the analysis is not the reason to skip it. This is
+		  the component that terminates every request, the fix is a patch inside
+		  the minor version already in use, and the argument for leaving it is an
+		  argument that depends on configuration nobody promised not to change.
+		-->
+		<tomcat.version>11.0.25</tomcat.version>
+
+		<!--
+		  CVE-2026-49844: a MapMessage holding NaN or Infinity serialises to
+		  something that is not valid JSON.
+
+		  Reachable only through the JSON template layout's message resolver, and
+		  this application logs through Logback - log4j-api is present only
+		  because the starter bridges it to SLF4J, and MapMessage.asJson is never
+		  called. A patch release costs less than the exception would.
+		-->
+		<log4j2.version>2.25.5</log4j2.version>
 
 		<!-- GHSA-5gvw-p9qm-jgwh, and the @JsonView and @JsonIgnoreProperties
 		     bypasses alongside it. This codebase uses none of those annotations,

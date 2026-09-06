@@ -2,6 +2,7 @@ package com.gitforge.cli.config;
 
 import com.gitforge.cli.CliException;
 import com.gitforge.cli.output.Json;
+import com.gitforge.cli.security.OwnerOnlyFile;
 import com.gitforge.cli.security.Redactor;
 
 import java.io.IOException;
@@ -21,9 +22,11 @@ import java.util.Optional;
  * is a deliberate limit on the blast radius: a stolen credentials file yields
  * something that expires, not something that unlocks an account.
  *
- * <p>The file is owner-only where the filesystem can express it, and the token
- * is registered with the {@link Redactor} the moment it is read, so it is masked
- * everywhere before any command has had a chance to print it.
+ * <p>The file is owner-only, and the CLI refuses to write a token where that
+ * cannot be arranged - {@link OwnerOnlyFile} is where that is enforced, and
+ * where the reasoning about Windows lives. The token is registered with the
+ * {@link Redactor} the moment it is read, so it is masked everywhere before any
+ * command has had a chance to print it.
  *
  * <p>Nothing here ever puts a token in a URL or in {@code argv}. A URL with
  * credentials ends up in shell history, in server logs and in error messages;
@@ -106,36 +109,33 @@ public final class Credentials {
         all.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> body.append(entry.getKey()).append('\t').append(entry.getValue()).append('\n'));
+
+        // Created and locked down before anything is written into it. Writing
+        // first and restricting afterwards - which is what this did - leaves the
+        // token readable for as long as the two calls are apart, and the failure
+        // was swallowed, so on a filesystem without POSIX bits it stayed readable.
+        OwnerOnlyFile.createProtected(file);
         try {
-            Path parent = file.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
             Files.writeString(file, body.toString(), StandardCharsets.UTF_8);
-            restrict(file);
         } catch (IOException unwritable) {
             throw CliException.failure("Could not write " + file + ": " + unwritable.getMessage());
         }
+        // Again, after the write: a filesystem that resets a security descriptor
+        // when a file is truncated and rewritten would otherwise undo the above,
+        // and the verification inside restrict() is what makes that a failure
+        // rather than a silent regression.
+        OwnerOnlyFile.restrict(file);
     }
 
-    /** The permissions as they actually are, for {@code auth status} to report. */
+    /**
+     * How the file is actually protected, for {@code auth status} to report.
+     *
+     * <p>This used to answer "unavailable" wherever POSIX bits were absent, which
+     * is what a Windows user saw beside a file four principals could read: a true
+     * statement about POSIX standing in for a false impression about safety.
+     */
     public String permissions() {
-        try {
-            return java.nio.file.attribute.PosixFilePermissions.toString(
-                    Files.getPosixFilePermissions(file));
-        } catch (IOException | UnsupportedOperationException notPosix) {
-            return "unavailable";
-        }
-    }
-
-    private static void restrict(Path path) {
-        try {
-            Files.setPosixFilePermissions(
-                    path, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-        } catch (IOException | UnsupportedOperationException notPosix) {
-            // Windows has no POSIX bits. Reported by permissions() rather than
-            // pretended about.
-        }
+        return OwnerOnlyFile.describe(file);
     }
 
     /** A description for {@code auth status}: hosts and file state, never a token. */
